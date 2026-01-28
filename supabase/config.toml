@@ -1,1 +1,13 @@
 project_id = "npwvoaizxzxphifzsadd"
+
+[functions.execute-flash-loan]
+verify_jwt = false
+
+[functions.gasless-relay]
+verify_jwt = false
+
+[functions.scan-opportunities]
+verify_jwt = false
+
+[functions.rebalance-positions]
+verify_jwt = false
