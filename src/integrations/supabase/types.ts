@@ -14,7 +14,207 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      arbitrage_opportunities: {
+        Row: {
+          amount_in: number
+          confidence: number
+          created_at: string
+          executed_at: string | null
+          gas_estimate: string
+          id: string
+          net_profit: number
+          profit_percent: number
+          profit_usd: number
+          route: string[]
+          source_dex: string
+          source_network: Database["public"]["Enums"]["network_type"]
+          status: Database["public"]["Enums"]["opportunity_status"]
+          target_dex: string
+          target_network: Database["public"]["Enums"]["network_type"] | null
+          token_in: string
+          token_out: string
+          type: Database["public"]["Enums"]["opportunity_type"]
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          amount_in: number
+          confidence: number
+          created_at?: string
+          executed_at?: string | null
+          gas_estimate: string
+          id?: string
+          net_profit: number
+          profit_percent: number
+          profit_usd: number
+          route: string[]
+          source_dex: string
+          source_network: Database["public"]["Enums"]["network_type"]
+          status?: Database["public"]["Enums"]["opportunity_status"]
+          target_dex: string
+          target_network?: Database["public"]["Enums"]["network_type"] | null
+          token_in: string
+          token_out: string
+          type: Database["public"]["Enums"]["opportunity_type"]
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          amount_in?: number
+          confidence?: number
+          created_at?: string
+          executed_at?: string | null
+          gas_estimate?: string
+          id?: string
+          net_profit?: number
+          profit_percent?: number
+          profit_usd?: number
+          route?: string[]
+          source_dex?: string
+          source_network?: Database["public"]["Enums"]["network_type"]
+          status?: Database["public"]["Enums"]["opportunity_status"]
+          target_dex?: string
+          target_network?: Database["public"]["Enums"]["network_type"] | null
+          token_in?: string
+          token_out?: string
+          type?: Database["public"]["Enums"]["opportunity_type"]
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      transactions: {
+        Row: {
+          created_at: string
+          gas_price: string | null
+          gas_used: string | null
+          hash: string | null
+          id: string
+          is_gasless: boolean | null
+          is_submarine: boolean | null
+          network: Database["public"]["Enums"]["network_type"]
+          opportunity_id: string | null
+          profit: number | null
+          relayer_address: string | null
+          status: Database["public"]["Enums"]["transaction_status"]
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          gas_price?: string | null
+          gas_used?: string | null
+          hash?: string | null
+          id?: string
+          is_gasless?: boolean | null
+          is_submarine?: boolean | null
+          network: Database["public"]["Enums"]["network_type"]
+          opportunity_id?: string | null
+          profit?: number | null
+          relayer_address?: string | null
+          status?: Database["public"]["Enums"]["transaction_status"]
+          type: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          gas_price?: string | null
+          gas_used?: string | null
+          hash?: string | null
+          id?: string
+          is_gasless?: boolean | null
+          is_submarine?: boolean | null
+          network?: Database["public"]["Enums"]["network_type"]
+          opportunity_id?: string | null
+          profit?: number | null
+          relayer_address?: string | null
+          status?: Database["public"]["Enums"]["transaction_status"]
+          type?: Database["public"]["Enums"]["transaction_type"]
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_opportunity_id_fkey"
+            columns: ["opportunity_id"]
+            isOneToOne: false
+            referencedRelation: "arbitrage_opportunities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_settings: {
+        Row: {
+          auto_execute: boolean | null
+          created_at: string
+          enabled_networks: Database["public"]["Enums"]["network_type"][] | null
+          id: string
+          max_gas_gwei: number | null
+          min_profit_percent: number | null
+          min_profit_usd: number | null
+          scan_interval: number | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          auto_execute?: boolean | null
+          created_at?: string
+          enabled_networks?:
+            | Database["public"]["Enums"]["network_type"][]
+            | null
+          id?: string
+          max_gas_gwei?: number | null
+          min_profit_percent?: number | null
+          min_profit_usd?: number | null
+          scan_interval?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          auto_execute?: boolean | null
+          created_at?: string
+          enabled_networks?:
+            | Database["public"]["Enums"]["network_type"][]
+            | null
+          id?: string
+          max_gas_gwei?: number | null
+          min_profit_percent?: number | null
+          min_profit_usd?: number | null
+          scan_interval?: number | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      user_wallets: {
+        Row: {
+          address: string
+          created_at: string
+          id: string
+          is_primary: boolean | null
+          label: string | null
+          user_id: string | null
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          label?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          id?: string
+          is_primary?: boolean | null
+          label?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -23,7 +223,11 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      network_type: "ethereum" | "arbitrum" | "polygon" | "bsc"
+      opportunity_status: "pending" | "executing" | "completed" | "failed"
+      opportunity_type: "flash_loan" | "flash_swap" | "cross_chain"
+      transaction_status: "pending" | "confirmed" | "failed"
+      transaction_type: "flash_loan" | "swap" | "bridge" | "rebalance"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +354,12 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      network_type: ["ethereum", "arbitrum", "polygon", "bsc"],
+      opportunity_status: ["pending", "executing", "completed", "failed"],
+      opportunity_type: ["flash_loan", "flash_swap", "cross_chain"],
+      transaction_status: ["pending", "confirmed", "failed"],
+      transaction_type: ["flash_loan", "swap", "bridge", "rebalance"],
+    },
   },
 } as const
