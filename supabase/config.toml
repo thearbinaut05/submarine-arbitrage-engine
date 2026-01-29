@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.rebalance-positions]
 verify_jwt = false
+
+[functions.deploy-contracts]
+verify_jwt = false
