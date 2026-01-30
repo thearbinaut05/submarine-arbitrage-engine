@@ -1,73 +1,229 @@
-# Welcome to your Lovable project
+# FlashArb Arbitrage Engine - Complete Implementation
 
-## Project info
+## Overview
+A production-ready DeFi arbitrage trading terminal that scans for and executes profitable arbitrage opportunities across multiple blockchain networks using flash loans.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features Implemented
 
-## How can I edit this code?
+### 1. Multi-Network Support
+- **Ethereum Mainnet** - Primary network with `https://eth.llamarpc.com` RPC
+- **Arbitrum** - Layer 2 scaling solution
+- **Polygon** - Ethereum sidechain
+- **BSC** - Binance Smart Chain
 
-There are several ways of editing your application.
+### 2. Real-Time Balance Fetching
+- Connected wallet balances displayed via RPC (`https://eth.llamarpc.com`)
+- Auto-refresh every 30 seconds
+- Manual refresh capability
+- ERC-20 token balance detection for:
+  - WETH, USDC, USDT, DAI
+  - WBTC, LINK, UNI, AAVE
 
-**Use Lovable**
+### 3. Arbitrage Scanning
+- Real-time opportunity detection across DEXs
+- Support for Uniswap V3, SushiSwap, PancakeSwap, QuickSwap
+- Configurable profit thresholds
+- Auto-execute high-confidence opportunities
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+### 4. Transaction Execution
+- Flash loan execution via smart contracts
+- Gasless transactions via Gelato Relay
+- MEV protection with submarine transactions
+- Multi-step arbitrage routes
 
-Changes made via Lovable will be committed automatically to this repo.
+## Project Structure
 
-**Use your preferred IDE**
+```
+submarine-arbitrage-engine/
+├── src/
+│   ├── hooks/
+│   │   ├── useWallet.ts          # Wallet connection + balance fetching
+│   │   ├── useRealArbitrage.ts   # Real arbitrage scanning & execution
+│   │   └── useArbitrageScanner.ts # Mock scanner (fallback)
+│   ├── components/
+│   │   ├── terminal/
+│   │   │   ├── Header.tsx        # App header with wallet status
+│   │   │   ├── WalletButton.tsx  # Wallet dropdown with balances
+│   │   │   ├── ScannerControls.tsx # Scanner configuration
+│   │   │   ├── OpportunityList.tsx
+│   │   │   └── DashboardStats.tsx
+│   │   └── ui/                   # shadcn/ui components
+│   ├── pages/
+│   │   └── Index.tsx             # Main dashboard
+│   └── types/
+│       ├── chains.ts             # Chain configurations
+│       └── defi.ts               # TypeScript interfaces
+├── contracts/
+│   ├── FlashArbExecutor.sol      # Main arbitrage contract
+│   ├── GaslessRelayer.sol        # Meta-transaction support
+│   └── PositionRebalancer.sol    # Position management
+└── supabase/
+    └── functions/
+        ├── deploy-contracts/     # Contract deployment
+        ├── execute-flash-loan/   # Flash loan execution
+        └── scan-opportunities/   # Opportunity scanning
+```
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## RPC Endpoints Configuration
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Ethereum (Primary)
+```
+https://eth.llamarpc.com
+```
+This is the main RPC endpoint used for:
+- Wallet balance fetching
+- Token balance queries
+- Transaction signing
+- Network state queries
 
-Follow these steps:
+### Supported Networks
+| Network | RPC URL | Chain ID |
+|---------|---------|----------|
+| Ethereum | https://eth.llamarpc.com | 1 |
+| Arbitrum | https://arb1.arbitrum.io/rpc | 42161 |
+| Polygon | https://polygon-rpc.com | 137 |
+| BSC | https://bsc-dataseed.binance.org | 56 |
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+## Usage
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### 1. Install Dependencies
+```bash
+npm install
+```
 
-# Step 3: Install the necessary dependencies.
-npm i
+### 2. Configure Environment
+```bash
+cp .env.example .env
+# Edit .env with your values
+```
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+### 3. Start Development Server
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### 4. Connect Wallet
+1. Click "Connect Wallet" button
+2. Approve in MetaMask/wallet
+3. Select network
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### 5. Start Arbitrage Scanner
+1. Configure networks to scan
+2. Set profit thresholds
+3. Click "Start" to begin scanning
+4. Execute profitable opportunities
 
-**Use GitHub Codespaces**
+## Smart Contract Deployment
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+### Standard Deployment
+```bash
+cd contracts
+npm install
+npx hardhat run scripts/deploy-all.ts --network mainnet
+```
 
-## What technologies are used for this project?
+### Gasless Deployment (via Gelato)
+```bash
+# Set GELATO_API_KEY in .env first
+npx hardhat run scripts/deploy-gasless-all.ts --network mainnet
+```
 
-This project is built with:
+## Contract Addresses
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+After deployment, contracts will be available at:
 
-## How can I deploy this project?
+### Ethereum Mainnet
+- FlashArbExecutor: `0x...`
+- GaslessRelayer: `0x...`
+- PositionRebalancer: `0x...`
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### Arbitrum
+- FlashArbExecutor: `0x...`
+- GaslessRelayer: `0x...`
+- PositionRebalancer: `0x...`
 
-## Can I connect a custom domain to my Lovable project?
+## Security Considerations
 
-Yes, you can!
+⚠️ **Important before mainnet use:**
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+1. Complete full security audit
+2. Test extensively on testnets (Sepolia, Arbitrum Sepolia)
+3. Implement proper access controls
+4. Set up monitoring and alerts
+5. Start with small amounts
+6. Have emergency pause mechanisms
+7. Configure proper slippage limits
+8. Set up MEV protection
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    React Frontend                            │
+│  ┌─────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │ Wallet      │  │ Scanner      │  │ Dashboard        │  │
+│  │ Connection  │  │ Controls     │  │ Stats            │  │
+│  └──────┬──────┘  └──────┬───────┘  └────────┬─────────┘  │
+└─────────┼─────────────────┼───────────────────┼────────────┘
+          │                 │                   │
+          ▼                 ▼                   ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     useWallet Hook                           │
+│  • Connect via window.ethereum                               │
+│  • Fetch balances via https://eth.llamarpc.com               │
+│  • Auto-refresh every 30s                                    │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  Supabase Edge Functions                      │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐  │
+│  │ execute-     │  │ gasless-     │  │ rebalance-       │  │
+│  │ flash-loan   │  │ relay        │  │ positions        │  │
+│  └──────────────┘  └──────────────┘  └──────────────────┘  │
+└─────────────────────┬───────────────────────────────────────┘
+                      │
+          ┌───────────┴───────────┐
+          ▼                       ▼
+┌─────────────────────┐  ┌─────────────────────┐
+│  Smart Contracts    │  │  DeFi Protocols     │
+│  • FlashArbExecutor │  │  • Aave V3          │
+│  • GaslessRelayer   │  │  • Uniswap V3       │
+│  • PositionRebalancer│  │  • SushiSwap        │
+└─────────────────────┘  └─────────────────────┘
+```
+
+## Dependencies
+
+- **React 18** - UI framework
+- **ethers v6** - Ethereum library
+- **shadcn/ui** - UI components
+- **Tailwind CSS** - Styling
+- **Framer Motion** - Animations
+- **Supabase** - Backend/Edge Functions
+- **Hardhat** - Smart contract development
+
+## Troubleshooting
+
+### "No wallet detected"
+- Install MetaMask or another Web3 wallet
+- Refresh the page
+
+### "Insufficient balance"
+- Fund wallet with native token (ETH, MATIC, BNB)
+- For gasless transactions, add credits to Gelato
+
+### "RPC connection failed"
+- Check internet connection
+- Try alternative RPC endpoint
+- Wait and retry
+
+### "Transaction reverted"
+- Check slippage settings
+- Ensure sufficient gas limit
+- Verify contract addresses
+
+## License
+
+MIT License
+

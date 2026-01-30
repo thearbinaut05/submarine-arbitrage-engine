@@ -12,6 +12,12 @@ export interface NetworkConfig {
     decimals: number;
   };
   color: string;
+  tokenList?: {
+    address: string;
+    symbol: string;
+    decimals: number;
+    name: string;
+  }[];
 }
 
 export interface WalletState {

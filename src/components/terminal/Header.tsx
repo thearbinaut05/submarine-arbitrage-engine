@@ -11,7 +11,7 @@ interface HeaderProps {
 }
 
 export function Header({ totalProfit, successRate, isScanning }: HeaderProps) {
-  const { wallet, connect, disconnect, switchNetwork, networks } = useWallet();
+  const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances } = useWallet();
 
   return (
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm px-6 flex items-center justify-between">
@@ -73,6 +73,7 @@ export function Header({ totalProfit, successRate, isScanning }: HeaderProps) {
           wallet={wallet}
           onConnect={connect}
           onDisconnect={disconnect}
+          onRefresh={wallet.isConnected ? refreshBalances : undefined}
         />
       </div>
     </header>

@@ -1,21 +1,27 @@
 import { motion } from 'framer-motion';
-import { Wallet, LogOut, Loader2 } from 'lucide-react';
+import { Wallet, LogOut, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { WalletState } from '@/types/defi';
+import { TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
 
 interface WalletButtonProps {
-  wallet: WalletState;
+  wallet: EnhancedWalletState;
   onConnect: () => void;
   onDisconnect: () => void;
+  onRefresh?: () => void;
 }
 
-export function WalletButton({ wallet, onConnect, onDisconnect }: WalletButtonProps) {
+export function WalletButton({ wallet, onConnect, onDisconnect, onRefresh }: WalletButtonProps) {
   const formatAddress = (address: string) => 
     `${address.slice(0, 6)}...${address.slice(-4)}`;
 
@@ -57,7 +63,66 @@ export function WalletButton({ wallet, onConnect, onDisconnect }: WalletButtonPr
           </div>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-64">
+        {/* Wallet Balance Section */}
+        <div className="px-2 py-2">
+          <div className="text-xs text-muted-foreground mb-1">Native Balance</div>
+          <div className="text-lg font-semibold text-foreground">
+            {parseFloat(wallet.balance).toFixed(4)} ETH
+          </div>
+          {wallet.lastUpdated && (
+            <div className="text-xs text-muted-foreground mt-1">
+              Updated: {new Date(wallet.lastUpdated).toLocaleTimeString()}
+            </div>
+          )}
+        </div>
+
+        <DropdownMenuSeparator />
+
+        {/* Token Balances */}
+        {wallet.tokens.length > 0 && (
+          <>
+            <div className="px-2 py-1">
+              <div className="text-xs text-muted-foreground">Token Balances</div>
+            </div>
+            {wallet.tokens.slice(0, 5).map((token) => (
+              <DropdownMenuItem key={token.address} className="flex justify-between cursor-default">
+                <span className="text-foreground">{token.symbol}</span>
+                <span className="text-muted-foreground font-mono">
+                  {parseFloat(token.balance).toFixed(token.decimals > 6 ? 4 : 2)}
+                </span>
+              </DropdownMenuItem>
+            ))}
+            {wallet.tokens.length > 5 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger className="text-xs text-muted-foreground">
+                  +{wallet.tokens.length - 5} more tokens
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="w-48">
+                  {wallet.tokens.slice(5).map((token) => (
+                    <DropdownMenuItem key={token.address} className="flex justify-between cursor-default">
+                      <span className="text-foreground">{token.symbol}</span>
+                      <span className="text-muted-foreground font-mono">
+                        {parseFloat(token.balance).toFixed(token.decimals > 6 ? 4 : 2)}
+                      </span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
+            <DropdownMenuSeparator />
+          </>
+        )}
+
+        {/* Refresh Option */}
+        {onRefresh && (
+          <DropdownMenuItem onClick={onRefresh} disabled={wallet.isLoadingTokens}>
+            <RefreshCw className="w-4 h-4 mr-2" />
+            {wallet.isLoadingTokens ? 'Refreshing...' : 'Refresh Balance'}
+          </DropdownMenuItem>
+        )}
+
+        {/* Disconnect */}
         <DropdownMenuItem 
           onClick={onDisconnect}
           className="text-destructive focus:text-destructive"

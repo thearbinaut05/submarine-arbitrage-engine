@@ -111,7 +111,7 @@ const TOKENS: Record<string, Record<string, string>> = {
   },
 };
 
-// Network configurations with reliable public RPCs
+// Network configurations with RPC endpoints
 const NETWORK_CONFIG: Record<string, {
   chainId: number;
   rpcUrl: string;
@@ -125,7 +125,7 @@ const NETWORK_CONFIG: Record<string, {
 }> = {
   mainnet: {
     chainId: 1,
-    rpcUrl: "https://cloudflare-eth.com",
+    rpcUrl: "https://eth.llamarpc.com",
     aavePool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
     uniswapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
     sushiRouter: "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F",
