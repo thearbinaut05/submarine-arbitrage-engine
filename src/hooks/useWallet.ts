@@ -3,7 +3,7 @@ import { ethers } from 'ethers';
 import { Network, WalletState, NetworkConfig } from '@/types/defi';
 
 // Common ERC-20 token addresses on Ethereum mainnet
-const COMMON_TOKENS = [
+const ETHEREUM_TOKENS = [
   { address: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2', symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
   { address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', symbol: 'USDC', decimals: 6, name: 'USD Coin' },
   { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7', symbol: 'USDT', decimals: 6, name: 'Tether USD' },
@@ -12,6 +12,35 @@ const COMMON_TOKENS = [
   { address: '0x514910771AF9Ca656af840dff83E8264EcF986CA', symbol: 'LINK', decimals: 18, name: 'Chainlink' },
   { address: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984', symbol: 'UNI', decimals: 18, name: 'Uniswap' },
   { address: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9', symbol: 'AAVE', decimals: 18, name: 'Aave' },
+];
+
+// Arbitrum tokens
+const ARBITRUM_TOKENS = [
+  { address: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1', symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+  { address: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831', symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+  { address: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', symbol: 'USDT', decimals: 6, name: 'Tether USD' },
+  { address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', symbol: 'DAI', decimals: 18, name: 'Dai Stablecoin' },
+  { address: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f', symbol: 'WBTC', decimals: 8, name: 'Wrapped Bitcoin' },
+  { address: '0xf97f4df75117a78c1A5a0DBb814Af92458539FB4', symbol: 'LINK', decimals: 18, name: 'Chainlink' },
+];
+
+// Polygon tokens
+const POLYGON_TOKENS = [
+  { address: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270', symbol: 'WMATIC', decimals: 18, name: 'Wrapped Matic' },
+  { address: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619', symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+  { address: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359', symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+  { address: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', symbol: 'USDT', decimals: 6, name: 'Tether USD' },
+  { address: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063', symbol: 'DAI', decimals: 18, name: 'Dai Stablecoin' },
+];
+
+// BSC tokens
+const BSC_TOKENS = [
+  { address: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c', symbol: 'WBNB', decimals: 18, name: 'Wrapped BNB' },
+  { address: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56', symbol: 'BUSD', decimals: 18, name: 'Binance USD' },
+  { address: '0x55d398326f99059fF775485246999027B3197955', symbol: 'USDT', decimals: 18, name: 'Tether USD' },
+  { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d', symbol: 'USDC', decimals: 18, name: 'USD Coin' },
+  { address: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8', symbol: 'ETH', decimals: 18, name: 'Ethereum' },
+  { address: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', symbol: 'BTCB', decimals: 18, name: 'Bitcoin BEP2' },
 ];
 
 // Minimal ERC-20 ABI for balanceOf
@@ -31,7 +60,7 @@ export const NETWORKS: Record<Network, NetworkConfig> = {
     explorer: 'https://etherscan.io',
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     color: 'hsl(220, 100%, 60%)',
-    tokenList: COMMON_TOKENS,
+    tokenList: ETHEREUM_TOKENS,
   },
   arbitrum: {
     id: 'arbitrum',
@@ -41,7 +70,7 @@ export const NETWORKS: Record<Network, NetworkConfig> = {
     explorer: 'https://arbiscan.io',
     nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
     color: 'hsl(210, 100%, 55%)',
-    tokenList: [],
+    tokenList: ARBITRUM_TOKENS,
   },
   polygon: {
     id: 'polygon',
@@ -51,7 +80,7 @@ export const NETWORKS: Record<Network, NetworkConfig> = {
     explorer: 'https://polygonscan.com',
     nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
     color: 'hsl(260, 80%, 60%)',
-    tokenList: [],
+    tokenList: POLYGON_TOKENS,
   },
   bsc: {
     id: 'bsc',
@@ -61,7 +90,7 @@ export const NETWORKS: Record<Network, NetworkConfig> = {
     explorer: 'https://bscscan.com',
     nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
     color: 'hsl(45, 100%, 50%)',
-    tokenList: [],
+    tokenList: BSC_TOKENS,
   },
 };
 

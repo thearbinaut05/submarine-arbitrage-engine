@@ -18,18 +18,21 @@ import { ethers } from 'ethers';
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances } = useWallet();
-  
+
   // Get signer from wallet for transactions
   const getSigner = useCallback(async () => {
     if (!wallet.address || !wallet.network) return null;
     try {
-      const config = networks[wallet.network];
+      if (typeof window === 'undefined' || !window.ethereum) {
+        return null;
+      }
       const provider = new ethers.BrowserProvider(window.ethereum);
       return await provider.getSigner();
-    } catch {
+    } catch (error) {
+      console.error('Failed to get signer:', error);
       return null;
     }
-  }, [wallet.address, wallet.network, networks]);
+  }, [wallet.address, wallet.network]);
 
   // Real arbitrage hook
   const {
@@ -40,7 +43,7 @@ const Index = () => {
     startScanning,
     stopScanning,
     executeOpportunity,
-  } = useRealArbitrage(wallet.address, wallet.network as Network | null, null); // Signer will be passed at execution time
+  } = useRealArbitrage(wallet.address, wallet.network as Network | null, null);
 
   // Mock scanner for UI demo (can be replaced with real scanning)
   const {

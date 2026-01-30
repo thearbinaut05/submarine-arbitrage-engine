@@ -23,6 +23,13 @@ const DEX_ROUTERS: Record<Network, { name: string; router: string }[]> = {
   ],
 };
 
+// Flash loan executor ABI
+const FLASH_ARB_EXECUTOR_ABI = [
+  'function executeArbitrage(address tokenIn, address tokenOut, uint256 amountIn, bytes calldata route) returns (uint256)',
+  'function estimateProfit(address tokenIn, address tokenOut, uint256 amountIn) view returns (uint256 profit)',
+  'function owner() view returns (address)',
+];
+
 // Token pairs to scan for arbitrage
 const SCAN_PAIRS: Record<Network, { base: string; quote: string }[]> = {
   ethereum: [
@@ -94,13 +101,6 @@ const PAIR_ABI = [
   'function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)',
   'function token0() view returns (address)',
   'function token1() view returns (address)',
-];
-
-// Flash loan executor ABI
-const FLASH_ARB_EXECUTOR_ABI = [
-  'function executeArbitrage(address tokenIn, address tokenOut, uint256 amountIn, bytes calldata route) returns (uint256)',
-  'function estimateProfit(address tokenIn, address tokenOut, uint256 amountIn) view returns (uint256 profit)',
-  'function owner() view returns (address)',
 ];
 
 export interface RealArbitrageState {
