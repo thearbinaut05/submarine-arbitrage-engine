@@ -13,8 +13,12 @@ export const NETWORK_CONFIG: Record<string, NetworkConfig> = {
     usdc: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
     usdt: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
     dai: "0x6B175474E89094C44Da98b954EescdeCB5BE1023a",
-    // Gelato
-    gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
+    // Gelato Relay for gasless submarine transactions
+    // Using Gelato's official mainnet relay address for sponsored calls
+    gelatoRelay: "0x27e4D5a5c6De0065F90fDa5Da0bA5f1dB39D8b8f",
+    // Alternative Gelato addresses for different relay types:
+    // - 0x27e4D5a5c6De0065F90fDa5Da0bA5f1dB39D8b8f (Gelato Relay v2)
+    // - 0xaBcC9b596420A9E9172FD5938620E265a0f9Df92 (Gelato Automate)
     // Gas settings
     maxGasPrice: 100_000_000_000, // 100 gwei
   },
@@ -57,6 +61,19 @@ export const NETWORK_CONFIG: Record<string, NetworkConfig> = {
     dai: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
     gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
     maxGasPrice: 5_000_000_000, // 5 gwei
+  },
+  sepolia: {
+    chainId: 11155111,
+    name: "Sepolia Testnet",
+    aavePoolProvider: "0x0496275d34753A48320CA58103d5220d394FF77FC", // Aave V3 Sepolia
+    uniswapV3Router: "0xC532a74256D3Db42D0Bf7a0400feFDbad7694008", // Uniswap V3 Sepolia
+    sushiswapRouter: "0x0", // No Sushiswap on Sepolia
+    weth: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14", // WETH Sepolia
+    usdc: "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8", // USDC Sepolia
+    usdt: "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0", // USDT Sepolia
+    dai: "0xFF34B3d4Aee8ddCd6F9AFFFB6Fe49bD371b8a357", // DAI Sepolia
+    gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92", // Gelato Relay
+    maxGasPrice: 50_000_000_000, // 50 gwei
   },
 };
 

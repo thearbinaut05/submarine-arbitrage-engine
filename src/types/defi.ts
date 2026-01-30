@@ -1,4 +1,4 @@
-export type Network = 'ethereum' | 'arbitrum' | 'polygon' | 'bsc';
+export type Network = 'ethereum' | 'arbitrum' | 'polygon' | 'bsc' | 'optimism' | 'base';
 
 export interface NetworkConfig {
   id: Network;

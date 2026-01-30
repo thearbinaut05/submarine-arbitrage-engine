@@ -43,6 +43,21 @@ const BSC_TOKENS = [
   { address: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c', symbol: 'BTCB', decimals: 18, name: 'Bitcoin BEP2' },
 ];
 
+// Optimism tokens
+const OPTIMISM_TOKENS = [
+  { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+  { address: '0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85', symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+  { address: '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', symbol: 'USDT', decimals: 6, name: 'Tether USD' },
+  { address: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1', symbol: 'DAI', decimals: 18, name: 'Dai Stablecoin' },
+];
+
+// Base tokens
+const BASE_TOKENS = [
+  { address: '0x4200000000000000000000000000000000000006', symbol: 'WETH', decimals: 18, name: 'Wrapped Ether' },
+  { address: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', symbol: 'USDC', decimals: 6, name: 'USD Coin' },
+  { address: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22', symbol: 'CBETH', decimals: 18, name: 'Coinbase Wrapped Staked ETH' },
+];
+
 // Minimal ERC-20 ABI for balanceOf
 const ERC20_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
@@ -91,6 +106,26 @@ export const NETWORKS: Record<Network, NetworkConfig> = {
     nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 },
     color: 'hsl(45, 100%, 50%)',
     tokenList: BSC_TOKENS,
+  },
+  optimism: {
+    id: 'optimism',
+    name: 'Optimism',
+    chainId: 10,
+    rpcUrl: 'https://mainnet.optimism.io',
+    explorer: 'https://optimistic.etherscan.io',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    color: 'hsl(0, 0%, 50%)',
+    tokenList: OPTIMISM_TOKENS,
+  },
+  base: {
+    id: 'base',
+    name: 'Base',
+    chainId: 8453,
+    rpcUrl: 'https://mainnet.base.org',
+    explorer: 'https://basescan.org',
+    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+    color: 'hsl(210, 100%, 50%)',
+    tokenList: BASE_TOKENS,
   },
 };
 
@@ -166,6 +201,7 @@ export function useWallet() {
         // Token might not exist on this network, skip silently
         console.debug(`Failed to fetch ${token.symbol} balance`);
       }
+      
     }
 
     return balances;

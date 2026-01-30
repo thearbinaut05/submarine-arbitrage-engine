@@ -1,63 +1,25 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ArbitrageOpportunity, ScannerConfig, Network } from '@/types/defi';
-import { priceFetcher } from '@/lib/dex/priceFetcher';
+import { coinGeckoFetcher } from '@/lib/dex/coinGeckoFetcher';
 
-const MOCK_DEXES = ['Uniswap V3', 'SushiSwap', 'Curve', '1inch', 'Balancer', 'PancakeSwap', 'QuickSwap'];
-const MOCK_TOKENS = ['WETH', 'USDC', 'USDT', 'DAI', 'WBTC', 'LINK', 'UNI', 'AAVE', 'CRV', 'MATIC'];
-const MOCK_NETWORKS: Network[] = ['ethereum', 'arbitrum', 'polygon', 'bsc'];
+// Flag to use CoinGecko API instead of on-chain RPC
+const USE_COINGECKO_API = true;
 
-// Flag to use real on-chain data instead of mock
-const USE_REAL_DATA = true;
-
-function generateMockOpportunity(): ArbitrageOpportunity {
-  const sourceNetwork = MOCK_NETWORKS[Math.floor(Math.random() * MOCK_NETWORKS.length)];
-  const isCrossChain = Math.random() > 0.7;
-  const targetNetwork = isCrossChain 
-    ? MOCK_NETWORKS.filter(n => n !== sourceNetwork)[Math.floor(Math.random() * (MOCK_NETWORKS.length - 1))]
-    : undefined;
-
-  const profitPercent = Math.random() * 2 + 0.1;
-  const baseAmount = Math.random() * 100000 + 10000;
-  const profitUsd = baseAmount * (profitPercent / 100);
-  const gasEstimate = (Math.random() * 50 + 10).toFixed(2);
-  const netProfit = profitUsd - parseFloat(gasEstimate);
-
-  const tokenIn = MOCK_TOKENS[Math.floor(Math.random() * MOCK_TOKENS.length)];
-  let tokenOut = MOCK_TOKENS[Math.floor(Math.random() * MOCK_TOKENS.length)];
-  while (tokenOut === tokenIn) {
-    tokenOut = MOCK_TOKENS[Math.floor(Math.random() * MOCK_TOKENS.length)];
-  }
-
-  return {
-    id: `opp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    type: isCrossChain ? 'cross_chain' : Math.random() > 0.5 ? 'flash_loan' : 'flash_swap',
-    sourceNetwork,
-    targetNetwork,
-    sourceDex: MOCK_DEXES[Math.floor(Math.random() * MOCK_DEXES.length)],
-    targetDex: MOCK_DEXES[Math.floor(Math.random() * MOCK_DEXES.length)],
-    tokenIn,
-    tokenOut,
-    profitPercent,
-    profitUsd,
-    gasEstimate: `$${gasEstimate}`,
-    netProfit,
-    confidence: Math.random() * 40 + 60,
-    timestamp: Date.now(),
-    route: [tokenIn, 'WETH', tokenOut].filter((v, i, a) => a.indexOf(v) === i),
-    status: 'pending',
-  };
-}
+// Default thresholds optimized for CoinGecko API
+const DEFAULT_MIN_PROFIT_PERCENT = 0.05; // 0.05% spread
+const DEFAULT_MIN_PROFIT_USD = 5; // $5 minimum profit
+const DEFAULT_SCAN_INTERVAL = 10000; // 10 seconds (API rate limit)
 
 export function useArbitrageScanner() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
   const [config, setConfig] = useState<ScannerConfig>({
     isActive: false,
     autoExecute: false,
-    minProfitPercent: 0.5,
-    minProfitUsd: 50,
+    minProfitPercent: DEFAULT_MIN_PROFIT_PERCENT,
+    minProfitUsd: DEFAULT_MIN_PROFIT_USD,
     maxGasGwei: 100,
     networks: ['ethereum', 'arbitrum', 'polygon', 'bsc'],
-    scanInterval: 2000,
+    scanInterval: DEFAULT_SCAN_INTERVAL,
   });
   const [stats, setStats] = useState({
     totalScanned: 0,
@@ -65,19 +27,22 @@ export function useArbitrageScanner() {
     successRate: 0,
     avgProfit: 0,
   });
-  const [useRealScanner, setUseRealScanner] = useState(USE_REAL_DATA);
-  const [isRealScanning, setIsRealScanning] = useState(false);
-  const [lastRealScanTime, setLastRealScanTime] = useState<number | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [lastScanTime, setLastScanTime] = useState<number | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
+  const [apiStatus, setApiStatus] = useState<{ cacheSize: number; lastCallTime: number }>({
+    cacheSize: 0,
+    lastCallTime: 0,
+  });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Convert internal opportunity format to frontend format
+  // Convert CoinGecko opportunity format to frontend format
   const convertToOpportunity = (
-    internalOpp: Awaited<ReturnType<typeof priceFetcher.scanArbitrageOpportunities>>[number]
+    internalOpp: Awaited<ReturnType<typeof coinGeckoFetcher.scanArbitrageOpportunities>>[number]
   ): ArbitrageOpportunity => {
     return {
-      id: `real-${internalOpp.network}-${internalOpp.tokenIn}-${internalOpp.tokenOut}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `cg-${internalOpp.network}-${internalOpp.tokenIn}-${internalOpp.tokenOut}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       type: 'flash_loan',
       sourceNetwork: internalOpp.network,
       sourceDex: internalOpp.buyDex,
@@ -96,18 +61,25 @@ export function useArbitrageScanner() {
     };
   };
 
-  // Scan using real on-chain data
-  const scanWithRealData = useCallback(async () => {
+  // Scan using CoinGecko API
+  const scanWithCoinGecko = useCallback(async () => {
     if (!config.networks.length) return;
 
-    setIsRealScanning(true);
+    setIsScanning(true);
     setScanError(null);
 
     try {
+      // Update API status
+      const status = coinGeckoFetcher.getStatus();
+      setApiStatus({
+        cacheSize: status.cacheSize,
+        lastCallTime: status.lastCallTime,
+      });
+
       const allOpportunities: ArbitrageOpportunity[] = [];
 
       for (const network of config.networks) {
-        const networkOpps = await priceFetcher.scanArbitrageOpportunities(
+        const networkOpps = await coinGeckoFetcher.scanArbitrageOpportunities(
           network as Network,
           config.minProfitPercent,
           config.minProfitUsd
@@ -122,7 +94,7 @@ export function useArbitrageScanner() {
       allOpportunities.sort((a, b) => b.netProfit - a.netProfit);
       
       setOpportunities(prev => [...allOpportunities, ...prev].slice(0, 50));
-      setLastRealScanTime(Date.now());
+      setLastScanTime(Date.now());
       
       setStats(prev => ({
         ...prev,
@@ -137,26 +109,27 @@ export function useArbitrageScanner() {
         }
       }
     } catch (error) {
-      console.error('Real scan error:', error);
-      setScanError(error instanceof Error ? error.message : 'Unknown error');
+      console.error('CoinGecko scan error:', error);
+      setScanError(error instanceof Error ? error.message : 'Unknown error - check API rate limits');
     } finally {
-      setIsRealScanning(false);
+      setIsScanning(false);
     }
   }, [config.networks, config.minProfitPercent, config.minProfitUsd, config.autoExecute]);
 
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
     
-    if (useRealScanner) {
-      // Start real on-chain scanning
-      scanWithRealData();
-      
-      // Continuous scanning
-      intervalRef.current = setInterval(() => {
-        scanWithRealData();
-      }, config.scanInterval);
-    }
-  }, [useRealScanner, config.scanInterval, scanWithRealData]);
+    // Clear cache on start to get fresh data
+    coinGeckoFetcher.clearCache();
+    
+    // Initial scan
+    scanWithCoinGecko();
+    
+    // Continuous scanning
+    intervalRef.current = setInterval(() => {
+      scanWithCoinGecko();
+    }, config.scanInterval);
+  }, [config.scanInterval, scanWithCoinGecko]);
 
   const stopScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: false }));
@@ -164,7 +137,7 @@ export function useArbitrageScanner() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
-    setIsRealScanning(false);
+    setIsScanning(false);
   }, []);
 
   const toggleAutoExecute = useCallback(() => {
@@ -205,10 +178,6 @@ export function useArbitrageScanner() {
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
-  const toggleRealScanner = useCallback(() => {
-    setUseRealScanner(prev => !prev);
-  }, []);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -227,11 +196,10 @@ export function useArbitrageScanner() {
     toggleAutoExecute,
     executeOpportunity,
     updateConfig,
-    useRealScanner,
-    toggleRealScanner,
-    isRealScanning,
-    lastRealScanTime,
+    isScanning,
+    lastScanTime,
     scanError,
+    apiStatus,
   };
 }
 

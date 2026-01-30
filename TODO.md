@@ -1,21 +1,24 @@
-deploy a# Fixes for Application Issues
+# Fix All Linting Errors - TODO
 
-## Issues Identified:
-1. **Signer handling**: `useRealArbitrage` receives `null` for signer
-2. **Missing token lists**: Only Ethereum has token lists configured
-3. **executeOpportunity callback**: Doesn't properly get the signer
-4. **Error handling gaps**: Some functions lack proper error handling
+## Status: In Progress
 
-## Tasks Completed:
-- [x] 1. Add token lists for all networks in `useWallet.ts`
-- [x] 2. Fix `useRealArbitrage` - removed duplicate ABI declaration
-- [x] 3. Fix `Index.tsx` execute opportunity flow with proper error handling
-- [ ] 4. Test the fixes
+### Test Files
+- [ ] src/test/abis.test.ts - Replace "any" with proper ABI types
+- [ ] src/test/hooks.test.ts - Define types for window.ethereum and private methods
+- [ ] src/test/priceFetcher.test.ts - Define types for private properties
+- [ ] src/test/setup.ts - Define types for WebSocket mock and events
 
-## Files Edited:
-- `src/hooks/useWallet.ts` - Added token lists for Arbitrum, Polygon, and BSC
-- `src/hooks/useRealArbitrage.ts` - Removed duplicate FLASH_ARB_EXECUTOR_ABI declaration
-- `src/pages/Index.tsx` - Improved getSigner function with proper error handling
+### Contract Scripts
+- [ ] contracts/scripts/deploy-single.ts - Fix constructor args and error types
+- [ ] contracts/scripts/deploy-gasless.ts - Fix error handling
+- [ ] contracts/scripts/deploy-gasless-all.ts - Fix error handling
+- [ ] contracts/scripts/deploy-all.ts - Fix error handling
+- [ ] contracts/scripts/verify-contracts.ts - Fix error handling
+- [ ] contracts/scripts/test-deployment.ts - Fix error handling
 
+### Supabase Functions
+- [ ] supabase/functions/rebalance-positions/index.ts - Define TransactionBundle type
 
-
+### Verification
+- [ ] Run linting to verify all "any" types are resolved
+- [ ] Test that changes don't break functionality

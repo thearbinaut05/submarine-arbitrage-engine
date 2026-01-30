@@ -64,7 +64,7 @@ describe('OnChainPriceFetcher', () => {
 
     it('should have providers initialized', () => {
       // Access private property for testing
-      const providers = (priceFetcher as any).providers;
+      const providers = (priceFetcher as { providers: Map<string, any> }).providers;
       expect(providers.size).toBeGreaterThan(0);
     });
   });
@@ -93,7 +93,7 @@ describe('OnChainPriceFetcher', () => {
 
       const result = (priceFetcher as any).calculatePriceFromReserves(
         reserve0,
-        r gInt(1000),
+        reserve1,
         18,
         6
       );

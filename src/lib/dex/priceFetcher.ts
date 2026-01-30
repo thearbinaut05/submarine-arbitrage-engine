@@ -411,36 +411,20 @@ class OnChainPriceFetcher {
       ['LINK', 'WETH'],
     ];
 
-    for (const [tokenIn, tokenOut] of tokenPairs) {
+    for (const [tokenInSymbol, tokenOutSymbol] of tokenPairs) {
       try {
-        const allPrices = await this.getAllDexPrices(network, tokenIn, tokenOut);
+        // Get token addresses
+        const tokenInAddress = TOKEN_ADDRESSES[network]?.[tokenInSymbol];
+        const tokenOutAddress = TOKEN_ADDRESSES[network]?.[tokenOutSymbol];
+
+        if (!tokenInAddress || !tokenOutAddress) {
+          console.warn(`Token addresses not found for ${tokenInSymbol}/${tokenOutSymbol} on ${network}`);
+          continue;
+        }
+
+        const allPrices = await this.getAllDexPrices(network, tokenInSymbol, tokenOutSymbol);
 
         if (allPrices.length < 2) continue;
-
-        // Find best buy and sell prices
-        let bestBuy: DexPrice | null = null;
-        let bestSell: DexPrice | null = null;
-        let maxSpread = 0;
-
-        for (const price of allPrices) {
-          // Determine which token is which in the pair
-          const tokenInPrice = price.token0.toLowerCase() === tokenIn.toLowerCase() 
-            ? price.price0 
-            : price.price1;
-          
-          const tokenOutPrice = price.token0.toLowerCase() === tokenIn.toLowerCase()
-            ? price.price1
-            : price.price0;
-
-          // Calculate spread (simplified)
-          const spread = Math.abs(tokenInPrice - tokenOutPrice) / Math.min(tokenInPrice, tokenOutPrice);
-
-          if (spread > maxSpread) {
-            maxSpread = spread;
-            bestBuy = price;
-            bestSell = price;
-          }
-        }
 
         // Check for price differences between DEXs
         for (let i = 0; i < allPrices.length; i++) {
@@ -448,24 +432,22 @@ class OnChainPriceFetcher {
             const dex1 = allPrices[i];
             const dex2 = allPrices[j];
 
-            // Normalize prices to same direction
-            const price1In = dex1.token0.toLowerCase() === tokenIn.toLowerCase()
-              ? dex1.price0
-              : dex1.price1;
-            const price2In = dex2.token0.toLowerCase() === tokenIn.toLowerCase()
-              ? dex2.price0
-              : dex2.price1;
+            // Get normalized prices for tokenIn in terms of tokenOut
+            const price1In = this.getTokenPriceInTermsOf(dex1, tokenInAddress, tokenOutAddress);
+            const price2In = this.getTokenPriceInTermsOf(dex2, tokenInAddress, tokenOutAddress);
 
             if (price1In === 0 || price2In === 0) continue;
 
-            // Calculate spread
-            const spread = Math.abs(price1In - price2In) / Math.min(price1In, price2In);
+            // Calculate spread - this is the price difference between DEXs
+            const minPrice = Math.min(price1In, price2In);
+            const maxPrice = Math.max(price1In, price2In);
+            const spread = (maxPrice - minPrice) / minPrice;
             const spreadPercent = spread * 100;
 
             // Estimate gas cost (simplified)
             const gasEstimate = 0.02; // ~$20 in ETH
             const tradeAmount = 10000; // $10k trade
-            const profitUsd = tradeAmount * (spreadPercent / 100);
+            const profitUsd = tradeAmount * spread;
             const netProfit = profitUsd - gasEstimate;
 
             if (
@@ -473,17 +455,20 @@ class OnChainPriceFetcher {
               profitUsd >= minProfitUsd &&
               netProfit > 0
             ) {
+              // Buy on DEX with lower price, sell on DEX with higher price
               const buyDex = price1In < price2In ? dex1 : dex2;
               const sellDex = price1In < price2In ? dex2 : dex1;
+              const buyPrice = Math.min(price1In, price2In);
+              const sellPrice = Math.max(price1In, price2In);
 
               opportunities.push({
                 network,
-                tokenIn,
-                tokenOut,
+                tokenIn: tokenInSymbol,
+                tokenOut: tokenOutSymbol,
                 buyDex: buyDex.dex,
                 sellDex: sellDex.dex,
-                buyPrice: Math.min(price1In, price2In),
-                sellPrice: Math.max(price1In, price2In),
+                buyPrice,
+                sellPrice,
                 spreadPercent,
                 profitUsd,
                 gasEstimate,
@@ -495,13 +480,41 @@ class OnChainPriceFetcher {
           }
         }
       } catch (error) {
-        console.error(`Error scanning ${tokenIn}/${tokenOut} on ${network}:`, error);
+        console.error(`Error scanning ${tokenInSymbol}/${tokenOutSymbol} on ${network}:`, error);
       }
     }
 
     // Sort by net profit
     opportunities.sort((a, b) => b.netProfit - a.netProfit);
     return opportunities.slice(0, 10);
+  }
+
+  /**
+   * Get the price of tokenIn in terms of tokenOut from a DEX price
+   * This correctly handles the token order in the pair
+   */
+  private getTokenPriceInTermsOf(
+    dexPrice: DexPrice,
+    tokenInAddress: string,
+    tokenOutAddress: string
+  ): number {
+    const tokenInLower = tokenInAddress.toLowerCase();
+    const tokenOutLower = tokenOutAddress.toLowerCase();
+    const token0Lower = dexPrice.token0.toLowerCase();
+    const token1Lower = dexPrice.token1.toLowerCase();
+
+    if (token0Lower === tokenInLower && token1Lower === tokenOutLower) {
+      // token0 = tokenIn, token1 = tokenOut
+      // price0 is how many tokenOut you get for 1 tokenIn
+      return dexPrice.price0;
+    } else if (token1Lower === tokenInLower && token0Lower === tokenOutLower) {
+      // token1 = tokenIn, token0 = tokenOut
+      // price1 is how many tokenOut you get for 1 tokenIn
+      return dexPrice.price1;
+    }
+
+    // Token not found in this pair
+    return 0;
   }
 
   // Get ETH price in USD (for gas estimation)

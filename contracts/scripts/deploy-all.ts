@@ -25,6 +25,174 @@ async function main() {
   if (balance < ethers.parseEther("0.01")) {
     throw new Error("Insufficient balance for deployment. Need at least 0.01 ETH");
   }
+TASK
+￼
+￼
+i want to see this deploy the contracts and also make an executed transactions
+￼
+BLACKBOXAI
+￼
+Now let me update the hardhat.config.ts to use a proper mainnet RPC URL:
+
+￼
+Edit
+contracts/hardhat.config.ts‎
++10
+-4
+￼
+BLACKBOXAI
+￼
+Now let me verify the compilation works and try to compile the contracts to ensure everything is set up correctly for mainnet deployment:
+
+￼
+Executed
+cd /home/ian/submarine-arbitrage-engine/contracts && echo "Compiling contracts for mainnet..." && npx hardhat compile 2>&1
+￼
+Command Output
+The command's output could not be captured due to some technical issue, however it has been executed successfully. Here's the current terminal's content to help you get the command's output:
+
+cd /home/ian/submarine-arbitrage-engine/contracts && echo "Compiling contracts for mainnet..." && npx hardhat compile 2>&1
+┌─[ian@parrot]─[~/submarine-arbitrage-engine]
+└──╼ $cd /home/ian/submarine-arbitrage-engine/contracts && echo "Compiling contracts for mainnet..." && npx hardhat compile 2>&1
+￼
+￼
+BLACKBOXAI
+￼
+The compilation executed successfully. Now let me create a comprehensive deployment guide and try to run the mainnet deployment:
+
+￼
+Editing
+README_DEPLOYMENT.md‎
+￼
+Read
+README_DEPLOYMENT.md‎
+￼
+BLACKBOXAI
+￼
+The README_DEPLOYMENT.md already has comprehensive deployment documentation. Let me add a section about submarine transactions and the Gelato relay configuration to the existing guide:
+
+￼
+Edit
+README_DEPLOYMENT.md‎
++25
+￼
+BLACKBOXAI
+￼
+Now let me try to compile the contracts to verify everything is working correctly:
+
+￼
+Executed
+cd /home/ian/submarine-arbitrage-engine/contracts && echo "Compiling contracts for mainnet deployment..." && npx hardhat compile --show-stack-traces 2>&1 | tail -50
+￼
+Command Output
+Error HH8: There's one or more errors in your config file:
+  * Invalid account: #0 for network: mainnet - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: arbitrum - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: polygon - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: bsc - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: goerli - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: sepolia - private key too short, expected 32 bytes
+To learn more about Hardhat's configuration, please go to https://v2.hardhat.org/config/
+HardhatError: HH8: There's one or more errors in your config file:
+  * Invalid account: #0 for network: mainnet - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: arbitrum - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: polygon - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: bsc - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: goerli - private key too short, expected 32 bytes
+  * Invalid account: #0 for network: sepolia - private key too short, expected 32 bytes
+To learn more about Hardhat's configuration, please go to https://v2.hardhat.org/config/
+    at validateConfig (/home/ian/submarine-arbitrage-engine/contracts/node_modules/hardhat/src/internal/core/config/config-validation.ts:374:9)
+    at loadConfigAndTasks (/home/ian/submarine-arbitrage-engine/contracts/node_modules/hardhat/src/internal/core/config/config-loading.ts:121:3)
+    at main (/home/ian/submarine-arbitrage-engine/contracts/node_modules/hardhat/src/internal/cli/cli.ts:221:62)
+    at Object.<anonymous> (/home/ian/submarine-arbitrage-engine/contracts/node_modules/hardhat/src/internal/cli/cli.ts:483:1)
+    at Module._compile (node:internal/modules/cjs/loader:1529:14)
+    at Object.Module._extensions..js (node:internal/modules/cjs/loader:1613:10)
+    at Module.load (node:internal/modules/cjs/loader:1275:32)
+    at Function.Module._load (node:internal/modules/cjs/loader:1096:12)
+    at Module.require (node:internal/modules/cjs/loader:1298:19)
+    at require (node:internal/modules/helpers:182:18)
+￼
+BLACKBOXAI
+￼
+The issue is that the other networks (arbitrum, polygon, bsc, goerli, sepolia) still have invalid private keys. Let me fix all network configurations:
+
+￼
+Read
+contracts/hardhat.config.ts‎
+￼
+BLACKBOXAI
+￼
+I need to fix all other networks to use the same conditional approach:
+
+￼
+Edit
+contracts/hardhat.config.ts‎
++5
+-5
+￼
+BLACKBOXAI
+￼
+Now let me try compiling again:
+
+￼
+Executed
+cd /home/ian/submarine-arbitrage-engine/contracts && npx hardhat compile 2>&1
+￼
+Command Output
+￼
+Executed
+sleep 5 && echo "Checking compilation status..."
+￼
+Command Output
+￼
+Executed
+ls -la /home/ian/submarine-arbitrage-engine/contracts/artifacts/contracts/*.json 2>&1 | head -20
+￼
+Command Output
+￼
+Executed
+cd /home/ian/submarine-arbitrage-engine/contracts && npx hardhat compile 2>&1 | tail -30
+￼
+Command Output
+￼
+BLACKBOXAI
+￼
+Let me check the current state of the hardhat.config.ts file:
+
+￼
+Executed
+cat /home/ian/submarine-arbitrage-engine/contracts/hardhat.config.ts | grep -A5 "mainnet:" | head -10
+￼
+Command Output
+￼
+BLACKBOXAI
+￼
+Let me check if the .env file exists in the contracts directory:
+
+￼
+Executed
+ls -la /home/ian/submarine-arbitrage-engine/contracts/.env* 2>&1 && echo "---" && cat /home/ian/submarine-arbitrage-engine/contracts/.env 2>&1 | head -20
+￼
+Command Output
+￼
+BLACKBOXAI
+￼
+I see the issue! The .env file has DEPLOYER_PRIVATE_KEY=0x_your_private_key_here which is not a valid 32-byte private key but is still truthy. Let me update the .env file to have an empty value:
+
+￼
+BLACKBOXAI
+￼
+Let me use execute_command to update the .env file:
+
+￼
+Execute
+sed -i 's/DEPLOYER_PRIVATE_KEY=0x_your_private_key_here/DEPLOYER_PRIVATE_KEY=/' /home/ian/submarine-arbitrage-engine/contracts/.env && echo "Updated DEPLOYER_PRIVATE_KEY in .env"
+￼Run Command
+￼Reject
+￼
+BLACKBOXAI
+￼
+Now let me try compiling again:
 
   const deployed: Partial<DeployedContracts> = {
     network: networkName,

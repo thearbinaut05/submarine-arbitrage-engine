@@ -1,0 +1,45 @@
+<parameter name="content"># TODO: Fix Arbitrage Scanner Errors
+
+## Issues Identified:
+1. `getTokenPrice` in AgentScanner.ts - Incorrect token matching (quote token not used)
+2. Price normalization inconsistencies across files
+3. Edge cases in spread calculation
+
+## Fix Plan:
+
+### Step 1: Create unified token price normalization helper
+- [x] Create `tokenPriceUtils.ts` with helper functions
+- [ ] Implement `getTokenPriceInTermsOf` function
+- [ ] Implement `normalizeDexPrices` function
+
+### Step 2: Fix AgentScanner.ts
+- [ ] Fix `getTokenPrice` method to properly use quote token address
+- [ ] Update `getNormalizedPrices` method for consistency
+- [ ] Add edge case handling for spread calculation
+
+### Step 3: Fix PriceMonitor.ts
+- [ ] Update `getTokenPriceInTermsOf` to use unified helper
+- [ ] Add better error handling
+
+### Step 4: Fix priceFetcher.ts
+- [ ] Update `getTokenPriceInTermsOf` to use unified helper
+- [ ] Fix spread calculation edge cases
+
+### Step 5: Fix DexAggregator.ts
+- [ ] Update `getTokenPriceInTermsOf` to use unified helper
+- [ ] Ensure consistency with other files
+
+### Step 6: Testing
+- [ ] Run existing tests to verify fixes
+- [ ] Verify opportunity detection works correctly
+
+## Progress:
+- [x] Analysis complete
+- [x] Plan approved by user
+- [ ] Implementing unified helper
+- [ ] Updating AgentScanner.ts
+- [ ] Updating PriceMonitor.ts
+- [ ] Updating priceFetcher.ts
+- [ ] Updating DexAggregator.ts
+- [ ] Running tests
+</parameter>

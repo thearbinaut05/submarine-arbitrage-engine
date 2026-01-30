@@ -5,22 +5,34 @@ import { useArbitrageScanner } from '@/hooks/useArbitrageScanner';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
 import { Network, ArbitrageOpportunity, ScannerConfig } from '@/types/defi';
 
+// Types for mocking
+interface MockEthereumProvider {
+  request: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
+  removeListener: ReturnType<typeof vi.fn>;
+  send: ReturnType<typeof vi.fn>;
+  isConnected?: ReturnType<typeof vi.fn>;
+  chainId?: string;
+}
+
 // Mock window.ethereum
-const mockEthereumProvider = {
+const mockEthereumProvider: MockEthereumProvider = {
   request: vi.fn(),
   on: vi.fn(),
   removeListener: vi.fn(),
   send: vi.fn(),
+  isConnected: vi.fn().mockReturnValue(true),
+  chainId: '0x1',
 };
 
 describe('useWallet Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (window as any).ethereum = mockEthereumProvider;
+    (window as { ethereum?: MockEthereumProvider }).ethereum = mockEthereumProvider;
   });
 
   afterEach(() => {
-    delete (window as any).ethereum;
+    delete (window as { ethereum?: MockEthereumProvider }).ethereum;
     vi.clearAllTimers();
   });
 
@@ -384,8 +396,8 @@ describe('useRealArbitrage Hook', () => {
         confidence: 75,
       };
 
-      // Access private method via any
-      const convertToOpportunity = (result as any).convertToOpportunity;
+      // Access private method via type assertion
+      const convertToOpportunity = (result as { convertToOpportunity: (opp: typeof internalOpp) => ArbitrageOpportunity }).convertToOpportunity;
       const converted = convertToOpportunity(internalOpp);
 
       expect(converted.id).toContain('real-ethereum-WETH-USDC');
@@ -431,7 +443,7 @@ describe('useRealArbitrage Hook', () => {
       });
 
       // Simulate polling result
-      const pollForTransaction = (result as any).pollForTransaction;
+      const pollForTransaction = (result as { pollForTransaction: (id: string, network: Network, txHash: string) => void }).pollForTransaction;
       pollForTransaction('real-eth-test-1', 'ethereum', '0xabc123');
 
       expect(result.current.opportunities[0].status).toBe('completed');

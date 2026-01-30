@@ -15,6 +15,9 @@ import {
   PANCAKESWAP_ROUTER_ABI,
 } from '@/lib/dex/abis';
 
+// Type for ABI entries - all ABIs in this project are strings
+type AbiEntry = string;
+
 describe('ABIs Configuration', () => {
   describe('UNISWAP_V2_PAIR_ABI', () => {
     it('should have all required functions', () => {
@@ -36,8 +39,11 @@ describe('ABIs Configuration', () => {
 
   describe('UNISWAP_V3_POOL_ABI', () => {
     it('should have slot0 function for price fetching', () => {
-      const functions = UNISWAP_V3_POOL_ABI.map((f: any) => typeof f === 'string' ? f : f.name);
-      
+      const functions = UNISWAP_V3_POOL_ABI.map((f: AbiEntry) => {
+        const match = f.match(/function (\w+)/);
+        return match ? match[1] : f;
+      });
+
       expect(functions).toContain('slot0');
       expect(functions).toContain('token0');
       expect(functions).toContain('token1');
@@ -46,7 +52,7 @@ describe('ABIs Configuration', () => {
 
     it('slot0 should return sqrtPriceX96', () => {
       const slot0 = UNISWAP_V3_POOL_ABI.find(
-        (f: any) => (typeof f === 'string' ? f : f.name) === 'slot0'
+        (f: AbiEntry) => f.includes('slot0')
       );
       expect(slot0).toBeDefined();
     });
@@ -66,8 +72,11 @@ describe('ABIs Configuration', () => {
 
   describe('MULTICALL_ABI', () => {
     it('should have aggregate functions for batch calls', () => {
-      const functions = MULTICALL_ABI.map((f: any) => typeof f === 'string' ? f : f.name);
-      
+      const functions = MULTICALL_ABI.map((f: AbiEntry) => {
+        const match = f.match(/function (\w+)/);
+        return match ? match[1] : f;
+      });
+
       expect(functions).toContain('aggregate');
       expect(functions).toContain('aggregate3');
       expect(functions).toContain('tryAggregate');
@@ -93,8 +102,11 @@ describe('ABIs Configuration', () => {
 
   describe('SUBMARINE_MANAGER_ABI', () => {
     it('should have commit and reveal functions', () => {
-      const functions = SUBMARINE_MANAGER_ABI.map((f: any) => typeof f === 'string' ? f : f.name);
-      
+      const functions = SUBMARINE_MANAGER_ABI.map((f: AbiEntry) => {
+        const match = f.match(/function (\w+)/);
+        return match ? match[1] : f;
+      });
+
       expect(functions).toContain('commit');
       expect(functions).toContain('commitWithSalt');
       expect(functions).toContain('isCommitmentValid');
@@ -122,7 +134,7 @@ describe('Contract Interface Validation', () => {
 
       expectedFunctions.forEach((fn) => {
         const found = FLASH_ARB_EXECUTOR_ABI.some(
-          (item: any) => (typeof item === 'string' ? item : item.name) === fn
+          (item: AbiEntry) => item.includes(fn)
         );
         expect(found).toBe(true);
       });
@@ -150,14 +162,14 @@ describe('Contract Interface Validation', () => {
   describe('Multicall Batch Processing', () => {
     it('should support batch queries for gas optimization', () => {
       const aggregateFn = MULTICALL_ABI.find(
-        (item: any) => (typeof item === 'string' ? item : item.name) === 'aggregate'
+        (item: AbiEntry) => item.includes('aggregate')
       );
       expect(aggregateFn).toBeDefined();
     });
 
     it('should support aggregate3 with failure handling', () => {
       const aggregate3Fn = MULTICALL_ABI.find(
-        (item: any) => (typeof item === 'string' ? item : item.name) === 'aggregate3'
+        (item: AbiEntry) => item.includes('aggregate3')
       );
       expect(aggregate3Fn).toBeDefined();
     });
@@ -191,8 +203,11 @@ describe('DEX Router Interfaces', () => {
 
 describe('WETH Interface', () => {
   it('should have deposit and withdraw for ETH wrapping', () => {
-    const functions = WETH_ABI.map((f: any) => typeof f === 'string' ? f : f.name);
-    
+    const functions = WETH_ABI.map((f: AbiEntry) => {
+      const match = f.match(/function (\w+)/);
+      return match ? match[1] : f;
+    });
+
     expect(functions).toContain('deposit');
     expect(functions).toContain('withdraw');
     expect(functions).toContain('balanceOf');
