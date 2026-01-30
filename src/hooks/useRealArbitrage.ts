@@ -5,19 +5,10 @@ import { NETWORKS } from './useWallet';
 import { supabase } from '@/integrations/supabase/client';
 import { priceFetcher } from '@/lib/dex/priceFetcher';
 
-// Flash loan executor ABI
+// Flash loan executor ABI (minimal for execution)
 const FLASH_ARB_EXECUTOR_ABI = [
-  'function executeArbitrage(address tokenIn, address tokenOut, uint256 amountIn, bytes calldata route) returns (uint256)',
-  'function estimateProfit(address tokenIn, address tokenOut, uint256 amountIn) view returns (uint256 profit)',
+  'function executeFlashLoan(address asset, uint256 amount, bytes calldata params) external',
   'function owner() view returns (address)',
-];
-
-// Submarine Transaction Manager ABI for commit-reveal
-const SUBMARINE_MANAGER_ABI = [
-  'function commit(bytes32 commitment, uint256 revealDeadline) external payable',
-  'function commitWithSalt(bytes32 commitmentHash, bytes32 salt, uint256 revealDeadline) external payable',
-  'function isCommitmentValid(bytes32 commitment) external view returns (bool)',
-  'function commitments(bytes32) external view returns (bytes32)',
 ];
 
 // Get blockchain explorer URL for a network
@@ -52,7 +43,6 @@ export function useRealArbitrage(
   const convertToOpportunity = (
     internalOpp: Awaited<ReturnType<typeof priceFetcher.scanArbitrageOpportunities>>[number]
   ): ArbitrageOpportunity => {
-    // Get gas estimate in USD
     const gasEstimate = internalOpp.gasEstimate;
     
     return {
@@ -75,13 +65,10 @@ export function useRealArbitrage(
     };
   };
 
-  // Scan for arbitrage opportunities on a single network using real on-chain data
+  // Scan for arbitrage opportunities on a single network
   const scanNetwork = useCallback(async (net: Network): Promise<ArbitrageOpportunity[]> => {
     try {
-      // Use real on-chain price fetcher
-      const opportunities = await priceFetcher.scanArbitrageOpportunities(net, 0.05, 5);
-      
-      // Convert to frontend format
+      const opportunities = await priceFetcher.scanArbitrageOpportunities(net, 0.05, 10);
       return opportunities.map(convertToOpportunity);
     } catch (error) {
       console.error(`Error scanning ${net}:`, error);
@@ -99,7 +86,6 @@ export function useRealArbitrage(
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
     try {
-      // Initial scan with real on-chain data
       const newOpportunities = await scanNetwork(network);
       
       setState(prev => ({
@@ -140,11 +126,11 @@ export function useRealArbitrage(
   // Poll for transaction confirmation
   const pollForTransaction = useCallback(async (
     opportunityId: string,
-    network: Network,
+    net: Network,
     taskId: string
   ) => {
-    const pollInterval = 3000; // 3 seconds
-    const maxAttempts = 40; // 2 minutes max
+    const pollInterval = 3000;
+    const maxAttempts = 40;
     let attempts = 0;
 
     const pollTimer = setInterval(async () => {
@@ -159,11 +145,11 @@ export function useRealArbitrage(
           .single();
 
         if (!error && txData) {
-          if (txData.hash && txData.status === 'confirmed') {
+          if (txData.real_tx_hash && txData.status === 'confirmed') {
             clearInterval(pollTimer);
             pendingTxsRef.current.delete(opportunityId);
             
-            const explorerUrl = getExplorerUrl(network, txData.hash);
+            const explorerUrl = getExplorerUrl(net, txData.real_tx_hash);
             
             setState(prev => ({
               ...prev,
@@ -172,7 +158,7 @@ export function useRealArbitrage(
                   ? {
                       ...op,
                       status: 'completed' as const,
-                      txHash: txData.hash,
+                      txHash: txData.real_tx_hash,
                       explorerUrl,
                       isRealExecution: true,
                       executedAt: Date.now(),
@@ -200,14 +186,14 @@ export function useRealArbitrage(
         }
 
         // Fallback: try to get transaction receipt directly from RPC
-        const provider = new ethers.JsonRpcProvider(NETWORKS[network].rpcUrl);
+        const provider = new ethers.JsonRpcProvider(NETWORKS[net].rpcUrl);
         try {
           const txReceipt = await provider.getTransactionReceipt(taskId);
           if (txReceipt && txReceipt.blockNumber) {
             clearInterval(pollTimer);
             pendingTxsRef.current.delete(opportunityId);
             
-            const explorerUrl = getExplorerUrl(network, taskId);
+            const explorerUrl = getExplorerUrl(net, taskId);
             
             setState(prev => ({
               ...prev,
@@ -282,16 +268,17 @@ export function useRealArbitrage(
       ),
     }));
 
-    // Get contract address from environment
-    const FLASH_ARB_ADDRESS = import.meta.env.VITE_FLASH_ARB_ADDRESS || '0x0000000000000000000000000000000000000000';
+    // Get contract addresses from environment
+    const FLASH_ARB_ADDRESS = import.meta.env.VITE_FLASH_ARB_ADDRESS;
+    const GELATO_RELAYER = import.meta.env.VITE_GELATO_RELAYER || '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92';
 
-    // If no contract deployed, show warning
-    if (FLASH_ARB_ADDRESS === '0x0000000000000000000000000000000000000000') {
+    // Check if contract is deployed
+    if (!FLASH_ARB_ADDRESS || FLASH_ARB_ADDRESS === '0x0000000000000000000000000000000000000000') {
       console.warn('FlashArb contract not deployed - simulating execution');
       
       // Simulate execution for demo
       setTimeout(() => {
-        const success = Math.random() > 0.1; // 90% success rate for simulation
+        const success = Math.random() > 0.1;
         
         setState(prev => ({
           ...prev,
@@ -316,29 +303,40 @@ export function useRealArbitrage(
     }
 
     try {
-      // Build transaction data for gasless relay
-      const amountIn = ethers.parseEther('1');
+      // Build transaction data for flash loan execution
+      const amountIn = ethers.parseEther('1'); // 1 ETH worth
       
-      // Encode route data
-      const routeData = new Uint8Array([
-        ...new Uint8Array(32), // padding
-        ...new Uint8Array(32), // tokenIn
-        ...new Uint8Array(32), // tokenOut
-      ]);
+      // Encode the arbitrage parameters
+      const params = ethers.AbiCoder.defaultAbiCoder().encode(
+        ['address', 'address', 'address', 'uint256', 'bytes', 'bytes'],
+        [
+          opportunity.tokenIn,
+          opportunity.tokenOut,
+          opportunity.sourceDex,
+          0, // minAmountOut
+          '0x', // swapDataSource
+          '0x', // swapDataTarget
+        ]
+      );
 
-      const contract = new ethers.Contract(FLASH_ARB_ADDRESS, FLASH_ARB_EXECUTOR_ABI);
-      
-      const txData = contract.interface.encodeFunctionData('executeArbitrage', [
+      // Get contract instance
+      const contract = new ethers.Contract(
+        FLASH_ARB_ADDRESS,
+        FLASH_ARB_EXECUTOR_ABI,
+        signer
+      );
+
+      // Encode function call
+      const txData = contract.interface.encodeFunctionData('executeFlashLoan', [
         opportunity.tokenIn,
-        opportunity.tokenOut,
         amountIn,
-        routeData
+        params,
       ]);
 
       // Create deadline (5 minutes from now)
       const deadline = Math.floor(Date.now() / 1000) + 300;
 
-      // Call gasless relay endpoint
+      // Call gasless relay endpoint (via Supabase Edge Function)
       const response = await fetch('/functions/v1/gasless-relay', {
         method: 'POST',
         headers: {
@@ -358,7 +356,8 @@ export function useRealArbitrage(
       });
 
       if (!response.ok) {
-        throw new Error(`Relay failed: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`Relay failed: ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json();
@@ -407,7 +406,7 @@ export function useRealArbitrage(
 
       throw error;
     }
-  }, [walletAddress, network, getAuthToken, pollForTransaction]);
+  }, [walletAddress, network, signer, getAuthToken, pollForTransaction]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -415,7 +414,6 @@ export function useRealArbitrage(
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
-      // Clear all pending transaction polls
       pendingTxsRef.current.forEach((timer) => {
         clearInterval(timer);
       });

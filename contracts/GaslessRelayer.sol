@@ -5,14 +5,17 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title GaslessRelayer
  * @notice Enables gasless/meta-transactions with optional submarine transaction support
  * @dev Implements EIP-712 for typed data signing and commit-reveal for submarine txs
+ * @dev UUPS upgradeable for future improvements
  */
-contract GaslessRelayer is EIP712, ReentrancyGuard {
+contract GaslessRelayer is OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable, EIP712 {
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
@@ -26,11 +29,8 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
         "SubmarineCommit(bytes32 commitment,uint256 nonce,uint256 deadline)"
     );
 
-    // Gas sponsor address
+    // Gas sponsor address (Gelato relay)
     address public gasSponsor;
-    
-    // Owner
-    address public owner;
     
     // Nonces for replay protection
     mapping(address => uint256) public nonces;
@@ -40,6 +40,9 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
     
     // Executed transactions
     mapping(bytes32 => bool) public executedTransactions;
+
+    // Authorized executors (contracts that can call executeMetaTransaction)
+    mapping(address => bool) public authorizedExecutors;
 
     // Events
     event MetaTransactionExecuted(
@@ -66,30 +69,27 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
     );
 
     event GasSponsorUpdated(address indexed oldSponsor, address indexed newSponsor);
+    
+    event ExecutorAuthorized(address indexed executor, bool authorized);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() EIP712("FlashArb Relayer", "1") {
+        _disableInitializers();
     }
 
-    modifier onlySponsor() {
-        require(msg.sender == gasSponsor || msg.sender == owner, "Not authorized");
-        _;
-    }
-
-    constructor(address _gasSponsor) EIP712("FlashArb Relayer", "1") {
-        owner = msg.sender;
+    function initialize(address _gasSponsor) public initializer {
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+        __EIP712_init("FlashArb Relayer", "1");
+        
         gasSponsor = _gasSponsor;
     }
 
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
     /**
-     * @notice Executes a meta-transaction on behalf of a user
-     * @param from The address of the user
-     * @param to The target contract address
-     * @param value The ETH value to send
-     * @param data The calldata
-     * @param deadline The transaction deadline
-     * @param signature The user's signature
+     * @notice Executes a meta-transaction on behalf of a user (only by authorized executors)
      */
     function executeMetaTransaction(
         address from,
@@ -98,7 +98,8 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
         bytes calldata data,
         uint256 deadline,
         bytes calldata signature
-    ) external onlySponsor nonReentrant returns (bool success, bytes memory returnData) {
+    ) external nonReentrant returns (bool success, bytes memory returnData) {
+        require(authorizedExecutors[msg.sender], "Not authorized executor");
         require(block.timestamp <= deadline, "Transaction expired");
         
         uint256 currentNonce = nonces[from];
@@ -133,8 +134,6 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
 
     /**
      * @notice Commits a submarine transaction (hidden until reveal)
-     * @param commitment The hash of the transaction details
-     * @param revealDeadline When the reveal must happen by
      */
     function commitSubmarine(
         bytes32 commitment,
@@ -150,12 +149,6 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
 
     /**
      * @notice Reveals and executes a submarine transaction
-     * @param from The address of the user
-     * @param to The target contract address
-     * @param value The ETH value
-     * @param data The calldata
-     * @param salt Random salt used in commitment
-     * @param signature The user's signature
      */
     function revealAndExecuteSubmarine(
         address from,
@@ -164,7 +157,7 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
         bytes calldata data,
         bytes32 salt,
         bytes calldata signature
-    ) external onlySponsor nonReentrant returns (bool success, bytes memory returnData) {
+    ) external nonReentrant returns (bool success, bytes memory returnData) {
         // Reconstruct commitment
         bytes32 commitment = keccak256(abi.encodePacked(from, to, value, keccak256(data), salt));
         
@@ -197,8 +190,15 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
     }
 
     /**
+     * @notice Authorizes or deauthorizes a contract executor
+     */
+    function setAuthorizedExecutor(address executor, bool authorized) external onlyOwner {
+        authorizedExecutors[executor] = authorized;
+        emit ExecutorAuthorized(executor, authorized);
+    }
+
+    /**
      * @notice Updates the gas sponsor address
-     * @param newSponsor The new sponsor address
      */
     function updateGasSponsor(address newSponsor) external onlyOwner {
         address oldSponsor = gasSponsor;
@@ -208,19 +208,16 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
 
     /**
      * @notice Withdraws ETH from the contract
-     * @param amount The amount to withdraw
      */
     function withdrawETH(uint256 amount) external onlyOwner {
-        payable(owner).transfer(amount);
+        payable(owner()).transfer(amount);
     }
 
     /**
      * @notice Withdraws tokens from the contract
-     * @param token The token address
-     * @param amount The amount to withdraw
      */
     function withdrawToken(address token, uint256 amount) external onlyOwner {
-        IERC20(token).safeTransfer(owner, amount);
+        IERC20(token).safeTransfer(owner(), amount);
     }
 
     /**
@@ -240,3 +237,4 @@ contract GaslessRelayer is EIP712, ReentrancyGuard {
 
     receive() external payable {}
 }
+

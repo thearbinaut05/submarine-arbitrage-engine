@@ -6,18 +6,20 @@ import {IPool} from "@aave/v3-core/contracts/interfaces/IPool.sol";
 import {IFlashLoanSimpleReceiver} from "@aave/v3-core/contracts/flashloan/base/FlashLoanSimpleReceiverBase.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {OwnableUpgradeable} from "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
 /**
  * @title FlashArbExecutor
- * @notice Executes flash loan arbitrage between DEXes
- * @dev Implements Aave V3 flash loan receiver interface
+ * @notice Executes flash loan arbitrage between DEXes with upgradeable proxy support
+ * @dev Implements Aave V3 flash loan receiver interface and UUPS upgradeability
  */
-contract FlashArbExecutor is IFlashLoanSimpleReceiver {
+contract FlashArbExecutor is IFlashLoanSimpleReceiver, OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
     IPoolAddressesProvider public immutable ADDRESSES_PROVIDER;
     IPool public immutable POOL;
-    address public owner;
     
     // DEX Router interfaces
     address public uniswapV3Router;
@@ -40,11 +42,7 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
         uint256 profit
     );
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Not owner");
-        _;
-    }
-
+    /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(
         address _addressProvider,
         address _uniswapV3Router,
@@ -52,10 +50,22 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
     ) {
         ADDRESSES_PROVIDER = IPoolAddressesProvider(_addressProvider);
         POOL = IPool(IPoolAddressesProvider(_addressProvider).getPool());
-        owner = msg.sender;
+        _disableInitializers();
+    }
+
+    function initialize(
+        address _uniswapV3Router,
+        address _sushiswapRouter
+    ) public initializer {
+        __Ownable_init(msg.sender);
+        __ReentrancyGuard_init();
+        __UUPSUpgradeable_init();
+        
         uniswapV3Router = _uniswapV3Router;
         sushiswapRouter = _sushiswapRouter;
     }
+
+    function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
 
     /**
      * @notice Initiates a flash loan for arbitrage
@@ -67,7 +77,7 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
         address asset,
         uint256 amount,
         bytes calldata params
-    ) external onlyOwner {
+    ) external onlyOwner nonReentrant {
         POOL.flashLoanSimple(
             address(this),
             asset,
@@ -79,12 +89,6 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
 
     /**
      * @notice Callback function called by Aave after receiving flash loan
-     * @param asset The address of the flash-borrowed asset
-     * @param amount The amount of the flash-borrowed asset
-     * @param premium The fee of the flash loan
-     * @param initiator The address of the flash loan initiator
-     * @param params The encoded parameters for arbitrage
-     * @return True if the execution is successful
      */
     function executeOperation(
         address asset,
@@ -165,11 +169,9 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
 
     /**
      * @notice Withdraws accumulated profits
-     * @param token The token to withdraw
-     * @param amount The amount to withdraw
      */
     function withdrawProfit(address token, uint256 amount) external onlyOwner {
-        IERC20(token).safeTransfer(owner, amount);
+        IERC20(token).safeTransfer(owner(), amount);
     }
 
     /**
@@ -178,7 +180,7 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
     function emergencyWithdraw(address token) external onlyOwner {
         uint256 balance = IERC20(token).balanceOf(address(this));
         if (balance > 0) {
-            IERC20(token).safeTransfer(owner, balance);
+            IERC20(token).safeTransfer(owner(), balance);
         }
     }
 
@@ -209,3 +211,4 @@ contract FlashArbExecutor is IFlashLoanSimpleReceiver {
 
     receive() external payable {}
 }
+
