@@ -49,6 +49,8 @@ const Index = () => {
   const {
     config,
     stats,
+    startScanner,
+    stopScanner,
     toggleAutoExecute,
     executeOpportunity: executeMockOpportunity,
     updateConfig,
@@ -82,10 +84,15 @@ const Index = () => {
       // Use real scanner with signer
       startScanning();
     } else {
-      // Fallback to mock scanner
-      startScanning();
+      // Fallback to mock scanner for demo
+      startScanner();
     }
-  }, [startScanning, getSigner]);
+  }, [startScanning, startScanner, getSigner]);
+
+  const handleStopScanning = useCallback(() => {
+    stopScanning();
+    stopScanner();
+  }, [stopScanning, stopScanner]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -126,7 +133,7 @@ const Index = () => {
                 
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-6">
-                    <ScannerControls
+                  <ScannerControls
                       config={config}
                       stats={{
                         totalScanned: stats.totalScanned + (lastScanTime ? 1 : 0),
@@ -135,7 +142,7 @@ const Index = () => {
                         avgProfit: stats.avgProfit,
                       }}
                       onStart={handleStartScanning}
-                      onStop={stopScanning}
+                      onStop={handleStopScanning}
                       onToggleAutoExecute={toggleAutoExecute}
                       onUpdateConfig={updateConfig}
                     />
@@ -164,7 +171,7 @@ const Index = () => {
                       avgProfit: stats.avgProfit,
                     }}
                     onStart={handleStartScanning}
-                    onStop={stopScanning}
+                    onStop={handleStopScanning}
                     onToggleAutoExecute={toggleAutoExecute}
                     onUpdateConfig={updateConfig}
                   />

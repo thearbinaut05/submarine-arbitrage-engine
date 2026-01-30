@@ -1,4 +1,4 @@
-# Fixes for Application Issues
+deploy a# Fixes for Application Issues
 
 ## Issues Identified:
 1. **Signer handling**: `useRealArbitrage` receives `null` for signer
@@ -16,4 +16,6 @@
 - `src/hooks/useWallet.ts` - Added token lists for Arbitrum, Polygon, and BSC
 - `src/hooks/useRealArbitrage.ts` - Removed duplicate FLASH_ARB_EXECUTOR_ABI declaration
 - `src/pages/Index.tsx` - Improved getSigner function with proper error handling
+
+
 

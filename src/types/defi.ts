@@ -45,6 +45,15 @@ export interface ArbitrageOpportunity {
   timestamp: number;
   route: string[];
   status: 'pending' | 'executing' | 'completed' | 'failed';
+  // Blockchain transaction info
+  txHash?: string;
+  explorerUrl?: string;
+  // Submarine transaction specific
+  isSubmarine?: boolean;
+  submarinePhase?: 'committed' | 'revealed' | 'executed';
+  // Real execution tracking
+  isRealExecution?: boolean;
+  executedAt?: number;
 }
 
 export interface Position {

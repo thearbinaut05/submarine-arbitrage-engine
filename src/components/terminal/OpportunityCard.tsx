@@ -8,7 +8,8 @@ import {
   AlertTriangle,
   CheckCircle2,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  LockKeyhole
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -34,11 +35,26 @@ const networkIcons: Record<Network, string> = {
   bsc: '🟡',
 };
 
+const explorerUrls: Record<Network, string> = {
+  ethereum: 'https://etherscan.io',
+  arbitrum: 'https://arbiscan.io',
+  polygon: 'https://polygonscan.com',
+  bsc: 'https://bscscan.com',
+};
+
+// Format transaction hash for display
+function formatTxHash(hash: string): string {
+  if (!hash) return '';
+  if (hash.startsWith('simulated-')) return 'Simulated';
+  return `${hash.slice(0, 6)}...${hash.slice(-4)}`;
+}
+
 export function OpportunityCard({ opportunity, onExecute }: OpportunityCardProps) {
   const isProfit = opportunity.netProfit > 0;
   const isExecuting = opportunity.status === 'executing';
   const isCompleted = opportunity.status === 'completed';
   const isFailed = opportunity.status === 'failed';
+  const hasExplorerLink = isCompleted && opportunity.explorerUrl && opportunity.txHash;
 
   return (
     <motion.div
@@ -88,6 +104,12 @@ export function OpportunityCard({ opportunity, onExecute }: OpportunityCardProps
               </>
             )}
           </div>
+          {opportunity.isSubmarine && (
+            <Badge variant="outline" className="text-xs border-neon-purple/50 text-neon-purple">
+              <LockKeyhole className="w-3 h-3 mr-1" />
+              Submarine
+            </Badge>
+          )}
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="w-3 h-3" />
@@ -154,6 +176,69 @@ export function OpportunityCard({ opportunity, onExecute }: OpportunityCardProps
         </div>
       </div>
 
+      {/* Submarine Phase Indicator */}
+      {isExecuting && opportunity.submarinePhase && (
+        <div className="mb-3 p-2 rounded-md bg-muted/30 flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">Submarine Phase:</span>
+          <div className="flex items-center gap-1">
+            <span className={cn(
+              "text-xs font-medium",
+              opportunity.submarinePhase === 'committed' && "text-neon-purple",
+              opportunity.submarinePhase === 'revealed' && "text-neon-orange",
+              opportunity.submarinePhase === 'executed' && "text-accent"
+            )}>
+              {opportunity.submarinePhase.charAt(0).toUpperCase() + opportunity.submarinePhase.slice(1)}
+            </span>
+            <LockKeyhole className="w-3 h-3 text-neon-purple" />
+          </div>
+        </div>
+      )}
+
+      {/* Blockchain Explorer Link for Completed Transactions */}
+      {hasExplorerLink && (
+        <div className="mb-3 p-2 rounded-md bg-accent/10 border border-accent/30 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-accent" />
+            <div className="flex flex-col">
+              <span className="text-xs text-accent font-medium">Transaction Confirmed</span>
+              <span className="text-xs text-muted-foreground">
+                {opportunity.isRealExecution ? 'Real blockchain execution' : 'Simulated execution'}
+              </span>
+            </div>
+          </div>
+          <a
+            href={opportunity.explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 transition-colors"
+          >
+            {formatTxHash(opportunity.txHash || '')}
+            <ExternalLink className="w-3 h-3" />
+          </a>
+        </div>
+      )}
+
+      {/* Failed Transaction Error */}
+      {isFailed && opportunity.txHash && (
+        <div className="mb-3 p-2 rounded-md bg-destructive/10 border border-destructive/30">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-destructive" />
+              <span className="text-xs text-destructive">Transaction Failed</span>
+            </div>
+            <a
+              href={`${explorerUrls[opportunity.sourceNetwork]}/tx/${opportunity.txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-destructive hover:text-destructive/80 transition-colors"
+            >
+              {formatTxHash(opportunity.txHash)}
+              <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+        </div>
+      )}
+
       {/* Action */}
       <div className="flex items-center gap-2">
         {opportunity.status === 'pending' && (
@@ -169,6 +254,9 @@ export function OpportunityCard({ opportunity, onExecute }: OpportunityCardProps
           >
             <Zap className="w-4 h-4 mr-2" />
             Execute Flash Loan
+            {opportunity.isSubmarine && (
+              <LockKeyhole className="w-3 h-3 ml-2" />
+            )}
           </Button>
         )}
         {isExecuting && (
@@ -194,3 +282,7 @@ export function OpportunityCard({ opportunity, onExecute }: OpportunityCardProps
     </motion.div>
   );
 }
+
+// Types are imported from @/types/defi
+// See src/types/defi.ts for full type definitions
+
