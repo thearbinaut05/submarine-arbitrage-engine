@@ -36,7 +36,82 @@ const CONTRACTS = {
   }
 };
 
-// Network configurations
+// Token configurations per network
+const TOKENS: Record<string, Record<string, string>> = {
+  mainnet: {
+    WETH: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+    USDC: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+    USDT: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    DAI: "0x6B175474E89094C44Da98b954EescdeCB5BE1023a",
+    WBTC: "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+    LINK: "0x514910771AF9Ca656af840dff83E8264EcF986CA",
+    UNI: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
+    AAVE: "0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9",
+  },
+  arbitrum: {
+    WETH: "0x82aF49447D8a07e3bd95BD0d56f35241523fBab1",
+    USDC: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+    "USDC.e": "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8",
+    USDT: "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+    DAI: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
+    WBTC: "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+    ARB: "0x912CE59144191C1204E64559FE8253a0e49E6548",
+    GMX: "0xfc5A1A6EB076a2C7aD06eD22C90d7E710E35ad0a",
+    LINK: "0xf97f4df75117a78c1A5a0DBb814Af92458539FB4",
+  },
+  polygon: {
+    WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    WETH: "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    USDC: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    "USDC.e": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+    USDT: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    DAI: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+    WBTC: "0x1BFD67037B42Cf73acF2047067bd4F2C47D9BfD6",
+    AAVE: "0xD6DF932A45C0f255f85145f286eA0b292B21C90B",
+    LINK: "0x53E0bca35eC356BD5ddDFebbD1Fc0fD03FaBad39",
+  },
+  bsc: {
+    WBNB: "0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c",
+    BUSD: "0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56",
+    USDT: "0x55d398326f99059fF775485246999027B3197955",
+    USDC: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+    DAI: "0x1AF3F329e8BE154074D8769D1FFa4eE058B1DBc3",
+    BTCB: "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
+    ETH: "0x2170Ed0880ac9A755fd29B2688956BD959F933F8",
+    CAKE: "0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82",
+    XVS: "0xcF6BB5389c92Bdda8a3747Ddb454cB7a64626C63",
+  },
+  optimism: {
+    WETH: "0x4200000000000000000000000000000000000006",
+    USDC: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85",
+    "USDC.e": "0x7F5c764cBc14f9669B88837ca1490cCa17c31607",
+    USDT: "0x94b008aA00579c1307B0EF2c499aD98a8ce58e58",
+    DAI: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1",
+    WBTC: "0x68f180fcCe6836688e9084f035309E29Bf0A2095",
+    OP: "0x4200000000000000000000000000000000000042",
+    LINK: "0x350a791Bfc2C21F9Ed5d10980Dad2e2638ffa7f6",
+  },
+  base: {
+    WETH: "0x4200000000000000000000000000000000000006",
+    USDC: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    USDbC: "0xd9aAEc86B65D86f6A7B5B1b0c42FFA531710b6CA",
+    DAI: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+    cbETH: "0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22",
+  },
+  avalanche: {
+    WAVAX: "0xB31f66AA3C1e785363F0875A1B74E27b85FD66c7",
+    USDC: "0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E",
+    "USDC.e": "0xA7D7079b0FEaD91F3e65f86E8915Cb59c1a4C664",
+    USDT: "0x9702230A8Ea53601f5cD2dc00fDBc13d4dF4A8c7",
+    "USDT.e": "0xc7198437980c041c805A1EDcbA50c1Ce5db95118",
+    DAI: "0xd586E7F844cEa2F87f50152665BCbc2C279D8d70",
+    "WBTC.e": "0x50b7545627a5162F82A992c33b87aDc75187B218",
+    "WETH.e": "0x49D5c2BdFfac6CE2BFdB6640F4F80f226bc10bAB",
+    JOE: "0x6e84a6216eA6dACC71eE8E6b0a5B7322EEbC0fDd",
+  },
+};
+
+// Network configurations with reliable public RPCs
 const NETWORK_CONFIG: Record<string, {
   chainId: number;
   rpcUrl: string;
@@ -45,15 +120,19 @@ const NETWORK_CONFIG: Record<string, {
   sushiRouter: string;
   gelatoRelay: string;
   explorerUrl: string;
+  nativeToken: string;
+  defaultGasPrice?: bigint;
 }> = {
   mainnet: {
     chainId: 1,
-    rpcUrl: "https://eth.llamarpc.com",
+    rpcUrl: "https://cloudflare-eth.com",
     aavePool: "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2",
     uniswapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
     sushiRouter: "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F",
     gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
     explorerUrl: "https://etherscan.io",
+    nativeToken: "ETH",
+    defaultGasPrice: 20000000000n, // 20 gwei
   },
   arbitrum: {
     chainId: 42161,
@@ -63,24 +142,63 @@ const NETWORK_CONFIG: Record<string, {
     sushiRouter: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
     gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
     explorerUrl: "https://arbiscan.io",
+    nativeToken: "ETH",
+    defaultGasPrice: 100000000n, // 0.1 gwei
   },
   polygon: {
     chainId: 137,
-    rpcUrl: "https://polygon-rpc.com",
+    rpcUrl: "https://polygon-bor-rpc.publicnode.com",
     aavePool: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
     uniswapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
     sushiRouter: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
     gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
     explorerUrl: "https://polygonscan.com",
+    nativeToken: "MATIC",
+    defaultGasPrice: 50000000000n, // 50 gwei
   },
   bsc: {
     chainId: 56,
-    rpcUrl: "https://bsc-dataseed.binance.org",
+    rpcUrl: "https://bsc-rpc.publicnode.com",
     aavePool: "0x0000000000000000000000000000000000000000",
-    uniswapRouter: "0x10ED43C718714eb63d5aA57B78B54704E256024E",
+    uniswapRouter: "0x10ED43C718714eb63d5aA57B78B54704E256024E", // PancakeSwap
     sushiRouter: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
     gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
     explorerUrl: "https://bscscan.com",
+    nativeToken: "BNB",
+    defaultGasPrice: 3000000000n, // 3 gwei
+  },
+  optimism: {
+    chainId: 10,
+    rpcUrl: "https://optimism-rpc.publicnode.com",
+    aavePool: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+    uniswapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
+    sushiRouter: "0x0000000000000000000000000000000000000000",
+    gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
+    explorerUrl: "https://optimistic.etherscan.io",
+    nativeToken: "ETH",
+    defaultGasPrice: 1000000n, // 0.001 gwei
+  },
+  base: {
+    chainId: 8453,
+    rpcUrl: "https://base-rpc.publicnode.com",
+    aavePool: "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5",
+    uniswapRouter: "0x2626664c2603336E57B271c5C0b26F421741e481", // UniswapV3 on Base
+    sushiRouter: "0x0000000000000000000000000000000000000000",
+    gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
+    explorerUrl: "https://basescan.org",
+    nativeToken: "ETH",
+    defaultGasPrice: 1000000n, // 0.001 gwei
+  },
+  avalanche: {
+    chainId: 43114,
+    rpcUrl: "https://avalanche-c-chain-rpc.publicnode.com",
+    aavePool: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
+    uniswapRouter: "0x0000000000000000000000000000000000000000",
+    sushiRouter: "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
+    gelatoRelay: "0xaBcC9b596420A9E9172FD5938620E265a0f9Df92",
+    explorerUrl: "https://snowtrace.io",
+    nativeToken: "AVAX",
+    defaultGasPrice: 25000000000n, // 25 nAVAX
   },
 };
 
@@ -196,7 +314,8 @@ async function deployDirect(
   constructorTypes: string[],
   constructorArgs: unknown[],
   gelatoApiKey: string | null,
-  chainId: number
+  chainId: number,
+  defaultGasPrice?: bigint
 ): Promise<{ address: string; txHash?: string; taskId?: string; sponsored: boolean }> {
   
   const abiCoder = ethers.AbiCoder.defaultAbiCoder();
@@ -210,9 +329,16 @@ async function deployDirect(
   const nonce = await provider.getTransactionCount(wallet.address);
   const expectedAddress = ethers.getCreateAddress({ from: wallet.address, nonce });
   
-  // Get current gas prices
-  const feeData = await provider.getFeeData();
-  const gasPrice = feeData.gasPrice || 1000000000n;
+  // Get current gas prices with fallback
+  let gasPrice = defaultGasPrice || 1000000000n;
+  try {
+    const feeData = await provider.getFeeData();
+    if (feeData.gasPrice) {
+      gasPrice = feeData.gasPrice;
+    }
+  } catch (err) {
+    console.log("Failed to get gas price, using default:", err);
+  }
   
   if (gelatoApiKey) {
     // Use Gelato sponsored call for gasless deployment
@@ -412,7 +538,8 @@ serve(async (req) => {
             constructorTypes,
             constructorArgs,
             gelatoApiKey,
-            config.chainId
+            config.chainId,
+            config.defaultGasPrice
           );
         }
         
@@ -451,14 +578,19 @@ serve(async (req) => {
       ),
     };
 
+    // Get tokens for this network
+    const networkTokens = TOKENS[network] || {};
+
     return new Response(
       JSON.stringify({
         success: true,
         network,
         chainId: config.chainId,
+        nativeToken: config.nativeToken,
         deployer: wallet.address,
         balance: balanceEth,
         contracts: deployedContracts,
+        tokens: networkTokens,
         configUpdate,
         gelatoSponsored: !!gelatoApiKey,
         message: gelatoApiKey 
@@ -467,6 +599,7 @@ serve(async (req) => {
             ? "Wallet has no funds. Please fund the deployer wallet or add GELATO_API_KEY for sponsored deployment."
             : "Deployment complete.",
         timestamp: new Date().toISOString(),
+        supportedNetworks: Object.keys(NETWORK_CONFIG),
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
