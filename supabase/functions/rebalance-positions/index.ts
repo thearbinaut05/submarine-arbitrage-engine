@@ -161,7 +161,17 @@ function buildPositionTransaction(position: PositionAction, protocolAddress: str
   };
 }
 
-function wrapWithFlashLoan(transactions: any[], network: string) {
+interface TransactionBundle {
+  to: string;
+  data: string;
+  params: {
+    asset: string;
+    amount: string;
+    onBehalfOf: string;
+  };
+}
+
+function wrapWithFlashLoan(transactions: TransactionBundle[], network: string) {
   // Calculate total flash loan amount needed
   const totalAmount = transactions.reduce((sum, tx) => {
     return sum + parseFloat(tx.params?.amount || '0');

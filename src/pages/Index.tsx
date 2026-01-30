@@ -56,6 +56,23 @@ const Index = () => {
     updateConfig,
   } = useArbitrageScanner();
 
+  // Start/stop scanner functions - use mock scanner when no wallet connected
+  const handleStartScanning = useCallback(async () => {
+    const signer = await getSigner();
+    if (signer) {
+      // Use real scanner with signer
+      startScanning();
+    } else {
+      // Fallback to mock scanner for demo
+      startScanner();
+    }
+  }, [startScanning, startScanner, getSigner]);
+
+  const handleStopScanning = useCallback(() => {
+    stopScanning();
+    stopScanner();
+  }, [stopScanning, stopScanner]);
+
   // Combined opportunities (real + mock)
   const combinedOpportunities = [...realOpportunities];
 
@@ -77,22 +94,6 @@ const Index = () => {
       }
     }
   }, [realOpportunities, executeOpportunity, executeMockOpportunity, getSigner]);
-
-  const handleStartScanning = useCallback(async () => {
-    const signer = await getSigner();
-    if (signer) {
-      // Use real scanner with signer
-      startScanning();
-    } else {
-      // Fallback to mock scanner for demo
-      startScanner();
-    }
-  }, [startScanning, startScanner, getSigner]);
-
-  const handleStopScanning = useCallback(() => {
-    stopScanning();
-    stopScanner();
-  }, [stopScanning, stopScanner]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

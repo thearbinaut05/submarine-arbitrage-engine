@@ -275,8 +275,8 @@ export function useWallet() {
       if (wallet.address) {
         setTimeout(() => refreshBalances(), 1000);
       }
-    } catch (error: any) {
-      if (error.code === 4902) {
+    } catch (error: unknown) {
+      if (error instanceof Error && 'code' in error && error.code === 4902) {
         try {
           await window.ethereum.request({
             method: 'wallet_addEthereumChain',
@@ -342,9 +342,18 @@ export function useWallet() {
   };
 }
 
+interface EthereumProvider {
+  isConnected?: boolean;
+  chainId?: string;
+  request(args: { method: string; params?: unknown[] }): Promise<unknown>;
+  on(event: string, handler: (...args: unknown[]) => void): void;
+  removeListener(event: string, handler: (...args: unknown[]) => void): void;
+  send(method: string, params?: unknown[]): Promise<unknown>;
+}
+
 declare global {
   interface Window {
-    ethereum?: any;
+    ethereum?: EthereumProvider;
   }
 }
 

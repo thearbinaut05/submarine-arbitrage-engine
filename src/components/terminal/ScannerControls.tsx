@@ -217,7 +217,7 @@ function StatCard({ icon: Icon, label, value, isPositive }: StatCardProps) {
       </div>
       <div className={cn(
         "text-lg font-bold",
-        isPositive ? "text-accent text-glow-green" : "text-foreground"
+        isPositive ? "text-accent" : "text-foreground"
       )}>
         {value}
       </div>
