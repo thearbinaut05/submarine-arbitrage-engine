@@ -347,8 +347,19 @@ serve(async (req) => {
     }> = {};
     
     const contractsToDeploy = contracts || ["FlashArbExecutor", "GaslessRelayer", "PositionRebalancer"];
+    
+    // Helper to delay between deployments to avoid rate limits
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    for (const contractName of contractsToDeploy) {
+    for (let i = 0; i < contractsToDeploy.length; i++) {
+      const contractName = contractsToDeploy[i];
+      
+      // Add delay between contracts to avoid Gelato rate limits (skip first)
+      if (i > 0 && gelatoApiKey) {
+        console.log("Waiting 15 seconds to avoid rate limits...");
+        await delay(15000);
+      }
+      
       console.log(`\nDeploying ${contractName}...`);
       
       let constructorTypes: string[] = [];
