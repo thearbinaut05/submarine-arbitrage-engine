@@ -1,15 +1,19 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ArbitrageOpportunity, ScannerConfig, Network } from '@/types/defi';
+import { priceFetcher } from '@/lib/dex/priceFetcher';
 
 const MOCK_DEXES = ['Uniswap V3', 'SushiSwap', 'Curve', '1inch', 'Balancer', 'PancakeSwap', 'QuickSwap'];
 const MOCK_TOKENS = ['WETH', 'USDC', 'USDT', 'DAI', 'WBTC', 'LINK', 'UNI', 'AAVE', 'CRV', 'MATIC'];
-const NETWORKS: Network[] = ['ethereum', 'arbitrum', 'polygon', 'bsc'];
+const MOCK_NETWORKS: Network[] = ['ethereum', 'arbitrum', 'polygon', 'bsc'];
+
+// Flag to use real on-chain data instead of mock
+const USE_REAL_DATA = true;
 
 function generateMockOpportunity(): ArbitrageOpportunity {
-  const sourceNetwork = NETWORKS[Math.floor(Math.random() * NETWORKS.length)];
+  const sourceNetwork = MOCK_NETWORKS[Math.floor(Math.random() * MOCK_NETWORKS.length)];
   const isCrossChain = Math.random() > 0.7;
   const targetNetwork = isCrossChain 
-    ? NETWORKS.filter(n => n !== sourceNetwork)[Math.floor(Math.random() * (NETWORKS.length - 1))]
+    ? MOCK_NETWORKS.filter(n => n !== sourceNetwork)[Math.floor(Math.random() * (MOCK_NETWORKS.length - 1))]
     : undefined;
 
   const profitPercent = Math.random() * 2 + 0.1;
@@ -61,12 +65,98 @@ export function useArbitrageScanner() {
     successRate: 0,
     avgProfit: 0,
   });
+  const [useRealScanner, setUseRealScanner] = useState(USE_REAL_DATA);
+  const [isRealScanning, setIsRealScanning] = useState(false);
+  const [lastRealScanTime, setLastRealScanTime] = useState<number | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Convert internal opportunity format to frontend format
+  const convertToOpportunity = (
+    internalOpp: Awaited<ReturnType<typeof priceFetcher.scanArbitrageOpportunities>>[number]
+  ): ArbitrageOpportunity => {
+    return {
+      id: `real-${internalOpp.network}-${internalOpp.tokenIn}-${internalOpp.tokenOut}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      type: 'flash_loan',
+      sourceNetwork: internalOpp.network,
+      sourceDex: internalOpp.buyDex,
+      targetDex: internalOpp.sellDex,
+      tokenIn: internalOpp.tokenIn,
+      tokenOut: internalOpp.tokenOut,
+      profitPercent: internalOpp.spreadPercent,
+      profitUsd: internalOpp.profitUsd,
+      gasEstimate: `$${internalOpp.gasEstimate.toFixed(2)}`,
+      netProfit: internalOpp.netProfit,
+      confidence: internalOpp.confidence,
+      timestamp: Date.now(),
+      route: [internalOpp.tokenIn, internalOpp.tokenOut],
+      status: 'pending',
+      isSubmarine: true,
+    };
+  };
+
+  // Scan using real on-chain data
+  const scanWithRealData = useCallback(async () => {
+    if (!config.networks.length) return;
+
+    setIsRealScanning(true);
+    setScanError(null);
+
+    try {
+      const allOpportunities: ArbitrageOpportunity[] = [];
+
+      for (const network of config.networks) {
+        const networkOpps = await priceFetcher.scanArbitrageOpportunities(
+          network as Network,
+          config.minProfitPercent,
+          config.minProfitUsd
+        );
+        
+        for (const opp of networkOpps) {
+          allOpportunities.push(convertToOpportunity(opp));
+        }
+      }
+
+      // Sort by net profit and take top opportunities
+      allOpportunities.sort((a, b) => b.netProfit - a.netProfit);
+      
+      setOpportunities(prev => [...allOpportunities, ...prev].slice(0, 50));
+      setLastRealScanTime(Date.now());
+      
+      setStats(prev => ({
+        ...prev,
+        totalScanned: prev.totalScanned + allOpportunities.length,
+      }));
+
+      if (config.autoExecute) {
+        for (const opp of allOpportunities.slice(0, 3)) {
+          if (opp.netProfit > 0 && opp.confidence > 80) {
+            setTimeout(() => executeOpportunity(opp.id), 1000);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Real scan error:', error);
+      setScanError(error instanceof Error ? error.message : 'Unknown error');
+    } finally {
+      setIsRealScanning(false);
+    }
+  }, [config.networks, config.minProfitPercent, config.minProfitUsd, config.autoExecute]);
+
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
-  }, []);
+    
+    if (useRealScanner) {
+      // Start real on-chain scanning
+      scanWithRealData();
+      
+      // Continuous scanning
+      intervalRef.current = setInterval(() => {
+        scanWithRealData();
+      }, config.scanInterval);
+    }
+  }, [useRealScanner, config.scanInterval, scanWithRealData]);
 
   const stopScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: false }));
@@ -74,6 +164,7 @@ export function useArbitrageScanner() {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
+    setIsRealScanning(false);
   }, []);
 
   const toggleAutoExecute = useCallback(() => {
@@ -114,38 +205,18 @@ export function useArbitrageScanner() {
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
+  const toggleRealScanner = useCallback(() => {
+    setUseRealScanner(prev => !prev);
+  }, []);
+
+  // Cleanup on unmount
   useEffect(() => {
-    if (config.isActive) {
-      intervalRef.current = setInterval(() => {
-        const newOpp = generateMockOpportunity();
-        
-        if (
-          newOpp.profitPercent >= config.minProfitPercent &&
-          newOpp.profitUsd >= config.minProfitUsd &&
-          config.networks.includes(newOpp.sourceNetwork)
-        ) {
-          setOpportunities(prev => [newOpp, ...prev].slice(0, 50));
-          setStats(prev => ({
-            ...prev,
-            totalScanned: prev.totalScanned + 1,
-          }));
-
-          if (config.autoExecute && newOpp.netProfit > 0 && newOpp.confidence > 80) {
-            setTimeout(() => executeOpportunity(newOpp.id), 500);
-          }
-        }
-      }, config.scanInterval);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [config, executeOpportunity]);
+  }, []);
 
   return {
     opportunities,
@@ -156,5 +227,11 @@ export function useArbitrageScanner() {
     toggleAutoExecute,
     executeOpportunity,
     updateConfig,
+    useRealScanner,
+    toggleRealScanner,
+    isRealScanning,
+    lastRealScanTime,
+    scanError,
   };
 }
+
