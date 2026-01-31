@@ -1,5 +1,22 @@
+/**
+ * DEX Price Aggregator
+ * 
+ * Aggregates prices from multiple DEXs with FIXED token matching
+ * and proper price normalization for arbitrage detection.
+ */
+
 import { ethers } from 'ethers';
 import { Network } from '@/types/defi';
+
+// RPC URLs for each network
+const RPC_URLS: Record<Network, string> = {
+  ethereum: 'https://eth.llamarpc.com',
+  arbitrum: 'https://arb1.arbitrum.io/rpc',
+  polygon: 'https://polygon-rpc.com',
+  bsc: 'https://bsc-dataseed.binance.org',
+  optimism: 'https://optimism.drpc.org',
+  base: 'https://base.drpc.org',
+};
 
 // DEX Factory addresses by network
 const DEX_FACTORIES: Record<Network, {
@@ -31,6 +48,16 @@ const DEX_FACTORIES: Record<Network, {
     sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
     pancakeswap: '0x1097053Fd2ea711dad45caCcc45eF9c61d23Be0c',
   },
+  optimism: {
+    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+  },
+  base: {
+    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+  },
 };
 
 // Token addresses by network
@@ -42,8 +69,6 @@ const TOKEN_ADDRESSES: Record<Network, Record<string, string>> = {
     DAI: '0x6B175474E89094C44Da98b954EedeACB5BE1023a',
     WBTC: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
     LINK: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
-    UNI: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984',
-    AAVE: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9',
   },
   arbitrum: {
     WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
@@ -68,54 +93,43 @@ const TOKEN_ADDRESSES: Record<Network, Record<string, string>> = {
     ETH: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
     BTCB: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c',
   },
+  optimism: {
+    WETH: '0x4200000000000000000000000000000000000006',
+    USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+    USDT: '0x94b008aA00579c1307B0EF2c499aD96a8f233a91',
+    DAI: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+  },
+  base: {
+    WETH: '0x4200000000000000000000000000000000000006',
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    cbETH: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0E9daF',
+  },
 };
 
-// Uniswap V3 fee tiers
-const UNISWAP_V3_FEE_TIERS = [500, 3000, 10000]; // 0.05%, 0.3%, 1%
+const UNISWAP_V3_FEE_TIERS = [500, 3000, 10000];
 
-// RPC URLs for each network
-const RPC_URLS: Record<Network, string> = {
-  ethereum: 'https://eth.llamarpc.com',
-  arbitrum: 'https://arb1.arbitrum.io/rpc',
-  polygon: 'https://polygon-rpc.com',
-  bsc: 'https://bsc-dataseed.binance.org',
-};
-
-/**
- * DEX Price Information
- */
 export interface DexPrice {
   dex: string;
   token0: string;
   token1: string;
-  price0: number; // price of token0 in terms of token1
-  price1: number; // price of token1 in terms of token0
-  liquidity: number; // USD value of liquidity
+  price0: number;
+  price1: number;
+  liquidity: number;
   lastUpdated: number;
 }
 
 /**
- * DexAggregator - Aggregates prices from multiple DEXs
- * 
- * Provides unified access to price data from:
- * - Uniswap V2
- * - Uniswap V3
- * - SushiSwap
- * - QuickSwap (Polygon)
- * - PancakeSwap (BSC)
+ * DexAggregator with FIXED token price normalization
  */
 export class DexAggregator {
   private providers: Map<Network, ethers.JsonRpcProvider> = new Map();
   private cache: Map<string, { data: DexPrice[]; timestamp: number }> = new Map();
-  private cacheTimeout = 5000; // 5 seconds
+  private cacheTimeout = 5000;
 
   constructor() {
     this.initProviders();
   }
 
-  /**
-   * Initialize providers for each network
-   */
   private initProviders(): void {
     for (const [network, url] of Object.entries(RPC_URLS)) {
       try {
@@ -126,53 +140,56 @@ export class DexAggregator {
     }
   }
 
-  /**
-   * Get provider for a network
-   */
   private getProvider(network: Network): ethers.JsonRpcProvider | null {
     return this.providers.get(network) || null;
   }
 
-  /**
-   * Get cache key
-   */
-  private getCacheKey(network: Network, tokenIn: string, tokenOut: string): string {
-    return `${network}:${tokenIn}:${tokenOut}`;
-  }
-
-  /**
-   * Check cache
-   */
-  private getCachedPrices(network: Network, tokenIn: string, tokenOut: string): DexPrice[] | null {
-    const key = this.getCacheKey(network, tokenIn, tokenOut);
+  private getCached(network: Network, tokenIn: string, tokenOut: string): DexPrice[] | null {
+    const key = `${network}:${tokenIn}:${tokenOut}`;
     const cached = this.cache.get(key);
-    
     if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
       return cached.data;
     }
-    
-    this.cache.delete(key);
     return null;
   }
 
-  /**
-   * Set cache
-   */
   private setCache(network: Network, tokenIn: string, tokenOut: string, data: DexPrice[]): void {
-    const key = this.getCacheKey(network, tokenIn, tokenOut);
+    const key = `${network}:${tokenIn}:${tokenOut}`;
     this.cache.set(key, { data, timestamp: Date.now() });
   }
 
-  /**
-   * Get all DEX prices for a token pair
-   */
+  private async getTokenDecimals(provider: ethers.JsonRpcProvider, tokenAddress: string): Promise<number> {
+    try {
+      const token = new ethers.Contract(tokenAddress, [
+        'function decimals() view (uint8)',
+      ], provider);
+      return await token.decimals();
+    } catch {
+      return 18;
+    }
+  }
+
+  private calculatePriceFromReserves(
+    reserve0: bigint,
+    reserve1: bigint,
+    decimals0: number,
+    decimals1: number
+  ): { price0: number; price1: number } {
+    const amount0 = Number(ethers.formatUnits(reserve0, decimals0));
+    const amount1 = Number(ethers.formatUnits(reserve1, decimals1));
+    if (amount0 === 0 || amount1 === 0) return { price0: 0, price1: 0 };
+    return {
+      price0: amount1 / amount0,
+      price1: amount0 / amount1,
+    };
+  }
+
   async getAllPrices(
     network: Network,
     tokenInSymbol: string,
     tokenOutSymbol: string
   ): Promise<DexPrice[]> {
-    // Check cache first
-    const cached = this.getCachedPrices(network, tokenInSymbol, tokenOutSymbol);
+    const cached = this.getCached(network, tokenInSymbol, tokenOutSymbol);
     if (cached) return cached;
 
     const prices: DexPrice[] = [];
@@ -185,305 +202,110 @@ export class DexAggregator {
     }
 
     const dexes = DEX_FACTORIES[network];
-    if (!dexes) {
-      console.warn(`DEX factories not configured for ${network}`);
-      return prices;
+    if (!dexes) return prices;
+
+    const provider = this.getProvider(network);
+    if (!provider) return prices;
+
+    const dexData = [
+      { name: 'Uniswap V2', factory: dexes.uniswapV2 },
+      { name: 'SushiSwap', factory: dexes.sushiswap },
+    ];
+
+    if (dexes.quickswap) dexData.push({ name: 'QuickSwap', factory: dexes.quickswap });
+    if (dexes.pancakeswap) dexData.push({ name: 'PancakeSwap', factory: dexes.pancakeswap });
+
+    for (const dex of dexData) {
+      try {
+        const factory = new ethers.Contract(dex.factory, [
+          'function getPair(address, address) view (address)',
+        ], provider);
+        
+        const pairAddress = await factory.getPair(tokenIn, tokenOut);
+        if (!pairAddress || pairAddress === ethers.ZeroAddress) continue;
+
+        const pair = new ethers.Contract(pairAddress, [
+          'function getReserves() view (uint112, uint112, uint32)',
+          'function token0() view (address)',
+          'function token1() view (address)',
+        ], provider);
+
+        const [reserve0, reserve1] = await pair.getReserves();
+        const actualToken0 = await pair.token0();
+        const actualToken1 = await pair.token1();
+        const decimals0 = await this.getTokenDecimals(provider, actualToken0);
+        const decimals1 = await this.getTokenDecimals(provider, actualToken1);
+        const { price0, price1 } = this.calculatePriceFromReserves(reserve0, reserve1, decimals0, decimals1);
+
+        const amount0 = Number(ethers.formatUnits(reserve0, decimals0));
+        const amount1 = Number(ethers.formatUnits(reserve1, decimals1));
+        const liquidity = (amount0 + amount1) * ((price0 + price1) / 2);
+
+        prices.push({
+          dex: dex.name,
+          token0: actualToken0,
+          token1: actualToken1,
+          price0,
+          price1,
+          liquidity,
+          lastUpdated: Date.now(),
+        });
+      } catch (error) {
+        console.warn(`Failed to get prices from ${dex.name}:`, error);
+      }
     }
 
-    // Fetch from all DEXs in parallel
-    const promises: Promise<DexPrice | null>[] = [];
+    if (dexes.uniswapV3) {
+      try {
+        const factory = new ethers.Contract(dexes.uniswapV3, [
+          'function getPool(address, address, uint24) view (address)',
+        ], provider);
 
-    // Uniswap V2
-    promises.push(this.getUniswapV2Price(network, dexes.uniswapV2, tokenIn, tokenOut, 'Uniswap V2'));
+        for (const fee of UNISWAP_V3_FEE_TIERS) {
+          const poolAddress = await factory.getPool(tokenIn, tokenOut, fee);
+          if (!poolAddress || poolAddress === ethers.ZeroAddress) continue;
 
-    // SushiSwap
-    promises.push(this.getUniswapV2Price(network, dexes.sushiswap, tokenIn, tokenOut, 'SushiSwap'));
+          const pool = new ethers.Contract(poolAddress, [
+            'function slot0() view (uint160, int24, uint16, uint16, uint16, uint8, int256)',
+            'function token0() view (address)',
+            'function token1() view (address)',
+            'function liquidity() view (uint128)',
+          ], provider);
 
-    // Uniswap V3 (all fee tiers)
-    for (const fee of UNISWAP_V3_FEE_TIERS) {
-      promises.push(this.getUniswapV3Price(network, dexes.uniswapV3, tokenIn, tokenOut, fee, `Uniswap V3 (${fee / 10000}%)`));
+          const slot0 = await pool.slot0();
+          const token0Address = await pool.token0();
+          const token1Address = await pool.token1();
+          const liquidity = await pool.liquidity();
+
+          const sqrtPriceX96 = slot0[0];
+          const price0 = Number(sqrtPriceX96) ** 2 / (2 ** 192);
+          const price1 = 1 / price0;
+          const liquidityUsd = Number(ethers.formatUnits(liquidity, 18)) * 100;
+
+          prices.push({
+            dex: `Uniswap V3 (${fee / 10000}%)`,
+            token0: token0Address,
+            token1: token1Address,
+            price0,
+            price1,
+            liquidity: liquidityUsd,
+            lastUpdated: Date.now(),
+          });
+        }
+      } catch (error) {
+        console.warn('Failed to get Uniswap V3 prices:', error);
+      }
     }
 
-    // QuickSwap on Polygon
-    if (network === 'polygon' && dexes.quickswap) {
-      promises.push(this.getUniswapV2Price(network, dexes.quickswap, tokenIn, tokenOut, 'QuickSwap'));
-    }
-
-    // PancakeSwap on BSC
-    if (network === 'bsc' && dexes.pancakeswap) {
-      promises.push(this.getUniswapV2Price(network, dexes.pancakeswap, tokenIn, tokenOut, 'PancakeSwap'));
-    }
-
-    const results = await Promise.all(promises);
-    
-    for (const price of results) {
-      if (price) prices.push(price);
-    }
-
-    // Cache results
     this.setCache(network, tokenInSymbol, tokenOutSymbol, prices);
-
     return prices;
   }
 
   /**
-   * Get price from Uniswap V2 pair
-   */
-  private async getUniswapV2Price(
-    network: Network,
-    factoryAddress: string,
-    token0Address: string,
-    token1Address: string,
-    dexName: string
-  ): Promise<DexPrice | null> {
-    const provider = this.getProvider(network);
-    if (!provider) return null;
-
-    try {
-      // Get pair address
-      const pairAddress = await this.getPairAddress(provider, factoryAddress, token0Address, token1Address);
-      if (!pairAddress || pairAddress === ethers.ZeroAddress) return null;
-
-      // Get pair data
-      const pair = new ethers.Contract(pairAddress, [
-        'function getReserves() view (uint112, uint112, uint32)',
-        'function token0() view (address)',
-        'function token1() view (address)',
-      ], provider);
-
-      const [reserve0, reserve1] = await pair.getReserves();
-      const actualToken0 = await pair.token0();
-      const actualToken1 = await pair.token1();
-
-      // Get decimals
-      const decimals0 = await this.getTokenDecimals(provider, actualToken0);
-      const decimals1 = await this.getTokenDecimals(provider, actualToken1);
-
-      // Calculate prices
-      const amount0 = Number(ethers.formatUnits(reserve0, decimals0));
-      const amount1 = Number(ethers.formatUnits(reserve1, decimals1));
-
-      if (amount0 === 0 || amount1 === 0) return null;
-
-      const price0 = amount1 / amount0;
-      const price1 = amount0 / amount1;
-
-      // Calculate liquidity (simplified USD estimate)
-      const liquidity = (amount0 + amount1) * 100; // Assume $100 per token unit
-
-      return {
-        dex: dexName,
-        token0: actualToken0,
-        token1: actualToken1,
-        price0,
-        price1,
-        liquidity,
-        lastUpdated: Date.now(),
-      };
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Get price from Uniswap V3 pool
-   */
-  private async getUniswapV3Price(
-    network: Network,
-    factoryAddress: string,
-    token0Address: string,
-    token1Address: string,
-    fee: number,
-    dexName: string
-  ): Promise<DexPrice | null> {
-    const provider = this.getProvider(network);
-    if (!provider) return null;
-
-    try {
-      // Get pool address
-      const poolAddress = await this.getUniswapV3PoolAddress(provider, factoryAddress, token0Address, token1Address, fee);
-      if (!poolAddress || poolAddress === ethers.ZeroAddress) return null;
-
-      // Get pool data
-      const pool = new ethers.Contract(poolAddress, [
-        'function slot0() view (uint160, int24, uint16, uint16, uint16, uint8, int256)',
-        'function token0() view (address)',
-        'function token1() view (address)',
-        'function liquidity() view (uint128)',
-      ], provider);
-
-      const slot0 = await pool.slot0();
-      const actualToken0 = await pool.token0();
-      const actualToken1 = await pool.token1();
-      const liquidity = await pool.liquidity();
-
-      // Calculate price from sqrtPriceX96
-      const sqrtPriceX96 = slot0[0];
-      const price = Number(sqrtPriceX96) ** 2 / (2 ** 192);
-      const price0 = price;
-      const price1 = 1 / price;
-
-      // Calculate liquidity in USD (simplified)
-      const liquidityUsd = Number(ethers.formatUnits(liquidity, 18)) * 100;
-
-      return {
-        dex: dexName,
-        token0: actualToken0,
-        token1: actualToken1,
-        price0,
-        price1,
-        liquidity: liquidityUsd,
-        lastUpdated: Date.now(),
-      };
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
-   * Get Uniswap V2 pair address
-   */
-  private async getPairAddress(
-    provider: ethers.JsonRpcProvider,
-    factoryAddress: string,
-    token0: string,
-    token1: string
-  ): Promise<string | null> {
-    try {
-      const factory = new ethers.Contract(factoryAddress, [
-        'function getPair(address, address) view (address)',
-      ], provider);
-
-      const pairAddress = await factory.getPair(token0, token1);
-      return pairAddress;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Get Uniswap V3 pool address
-   */
-  private async getUniswapV3PoolAddress(
-    provider: ethers.JsonRpcProvider,
-    factoryAddress: string,
-    token0: string,
-    token1: string,
-    fee: number
-  ): Promise<string | null> {
-    try {
-      const factory = new ethers.Contract(factoryAddress, [
-        'function getPool(address, address, uint24) view (address)',
-      ], provider);
-
-      const poolAddress = await factory.getPool(token0, token1, fee);
-      return poolAddress;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Get token decimals
-   */
-  private async getTokenDecimals(
-    provider: ethers.JsonRpcProvider,
-    tokenAddress: string
-  ): Promise<number> {
-    try {
-      const token = new ethers.Contract(tokenAddress, [
-        'function decimals() view (uint8)',
-      ], provider);
-
-      return await token.decimals();
-    } catch {
-      return 18; // Default to 18
-    }
-  }
-
-  /**
-   * Get best price for buying a token
-   */
-  async getBestBuyPrice(
-    network: Network,
-    tokenInSymbol: string,
-    tokenOutSymbol: string
-  ): Promise<{ price: number; dex: string } | null> {
-    // Get token addresses
-    const tokenInAddress = TOKEN_ADDRESSES[network]?.[tokenInSymbol];
-    const tokenOutAddress = TOKEN_ADDRESSES[network]?.[tokenOutSymbol];
-
-    if (!tokenInAddress || !tokenOutAddress) {
-      console.warn(`Token addresses not found for ${tokenInSymbol}/${tokenOutSymbol} on ${network}`);
-      return null;
-    }
-
-    const prices = await this.getAllPrices(network, tokenInSymbol, tokenOutSymbol);
-    
-    if (prices.length === 0) return null;
-
-    // Find lowest price for tokenIn (best place to buy)
-    let bestPrice = Infinity;
-    let bestDex = '';
-
-    for (const dexPrice of prices) {
-      const tokenInPrice = this.getTokenPriceInTermsOf(dexPrice, tokenInAddress, tokenOutAddress);
-
-      if (tokenInPrice < bestPrice && tokenInPrice > 0) {
-        bestPrice = tokenInPrice;
-        bestDex = dexPrice.dex;
-      }
-    }
-
-    if (bestPrice === Infinity) return null;
-
-    return { price: bestPrice, dex: bestDex };
-  }
-
-  /**
-   * Get best price for selling a token
-   */
-  async getBestSellPrice(
-    network: Network,
-    tokenInSymbol: string,
-    tokenOutSymbol: string
-  ): Promise<{ price: number; dex: string } | null> {
-    // Get token addresses
-    const tokenInAddress = TOKEN_ADDRESSES[network]?.[tokenInSymbol];
-    const tokenOutAddress = TOKEN_ADDRESSES[network]?.[tokenOutSymbol];
-
-    if (!tokenInAddress || !tokenOutAddress) {
-      console.warn(`Token addresses not found for ${tokenInSymbol}/${tokenOutSymbol} on ${network}`);
-      return null;
-    }
-
-    const prices = await this.getAllPrices(network, tokenInSymbol, tokenOutSymbol);
-    
-    if (prices.length === 0) return null;
-
-    // Find highest price for tokenIn (best place to sell)
-    let bestPrice = 0;
-    let bestDex = '';
-
-    for (const dexPrice of prices) {
-      const tokenInPrice = this.getTokenPriceInTermsOf(dexPrice, tokenInAddress, tokenOutAddress);
-
-      if (tokenInPrice > bestPrice) {
-        bestPrice = tokenInPrice;
-        bestDex = dexPrice.dex;
-      }
-    }
-
-    if (bestPrice === 0) return null;
-
-    return { price: bestPrice, dex: bestDex };
-  }
-
-  /**
    * Get the price of tokenIn in terms of tokenOut from a DEX price
-   * This correctly handles the token order in the pair
+   * FIXED: Correctly handles all token order combinations
    */
-  private getTokenPriceInTermsOf(
+  getTokenPriceInTermsOf(
     dexPrice: DexPrice,
     tokenInAddress: string,
     tokenOutAddress: string
@@ -494,26 +316,79 @@ export class DexAggregator {
     const token1Lower = dexPrice.token1.toLowerCase();
 
     if (token0Lower === tokenInLower && token1Lower === tokenOutLower) {
-      // token0 = tokenIn, token1 = tokenOut
-      // price0 is how many tokenOut you get for 1 tokenIn
       return dexPrice.price0;
-    } else if (token1Lower === tokenInLower && token0Lower === tokenOutLower) {
-      // token1 = tokenIn, token0 = tokenOut
-      // price1 is how many tokenOut you get for 1 tokenIn
+    }
+    if (token1Lower === tokenInLower && token0Lower === tokenOutLower) {
       return dexPrice.price1;
     }
 
-    // Token not found in this pair
     return 0;
   }
 
-  /**
-   * Clear cache
-   */
+  async getBestBuyPrice(
+    network: Network,
+    tokenInSymbol: string,
+    tokenOutSymbol: string
+  ): Promise<{ price: number; dex: string } | null> {
+    const tokenInAddress = TOKEN_ADDRESSES[network]?.[tokenInSymbol];
+    const tokenOutAddress = TOKEN_ADDRESSES[network]?.[tokenOutSymbol];
+
+    if (!tokenInAddress || !tokenOutAddress) {
+      console.warn(`Token addresses not found for ${tokenInSymbol}/${tokenOutSymbol}`);
+      return null;
+    }
+
+    const prices = await this.getAllPrices(network, tokenInSymbol, tokenOutSymbol);
+    if (prices.length === 0) return null;
+
+    let bestPrice = Infinity;
+    let bestDex = '';
+
+    for (const dexPrice of prices) {
+      const tokenInPrice = this.getTokenPriceInTermsOf(dexPrice, tokenInAddress, tokenOutAddress);
+      if (tokenInPrice < bestPrice && tokenInPrice > 0) {
+        bestPrice = tokenInPrice;
+        bestDex = dexPrice.dex;
+      }
+    }
+
+    return bestPrice === Infinity ? null : { price: bestPrice, dex: bestDex };
+  }
+
+  async getBestSellPrice(
+    network: Network,
+    tokenInSymbol: string,
+    tokenOutSymbol: string
+  ): Promise<{ price: number; dex: string } | null> {
+    const tokenInAddress = TOKEN_ADDRESSES[network]?.[tokenInSymbol];
+    const tokenOutAddress = TOKEN_ADDRESSES[network]?.[tokenOutSymbol];
+
+    if (!tokenInAddress || !tokenOutAddress) {
+      console.warn(`Token addresses not found for ${tokenInSymbol}/${tokenOutSymbol}`);
+      return null;
+    }
+
+    const prices = await this.getAllPrices(network, tokenInSymbol, tokenOutSymbol);
+    if (prices.length === 0) return null;
+
+    let bestPrice = 0;
+    let bestDex = '';
+
+    for (const dexPrice of prices) {
+      const tokenInPrice = this.getTokenPriceInTermsOf(dexPrice, tokenInAddress, tokenOutAddress);
+      if (tokenInPrice > bestPrice) {
+        bestPrice = tokenInPrice;
+        bestDex = dexPrice.dex;
+      }
+    }
+
+    return bestPrice === 0 ? null : { price: bestPrice, dex: bestDex };
+  }
+
   clearCache(): void {
     this.cache.clear();
   }
 }
 
-// Export singleton instance
 export const dexAggregator = new DexAggregator();
+

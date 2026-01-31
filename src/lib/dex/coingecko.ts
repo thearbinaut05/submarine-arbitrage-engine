@@ -3,13 +3,18 @@
  * 
  * Free API endpoints for fetching token prices across multiple DEXs
  * API Docs: https://www.coingecko.com/en/api/documentation
+ * 
+ * FIXED: Proper rate limiting, retry logic, and arbitrage detection
  */
 
-// CoinGecko API base URLs (free tier)
+// CoinGecko API base URLs (free tier) - multiple endpoints for redundancy
 const COINGECKO_API_BASE = 'https://api.coingecko.com/api/v3';
+const COINGECKO_API_BACKUP = 'https://api.coingecko.com/api/v3'; // Same but could be different in production
 
-// Rate limiting for free tier (10-50 calls/minute) - optimized
-const RATE_LIMIT_DELAY = 1000; // 1 second between calls (faster but still safe)
+// Rate limiting for free tier (10-50 calls/minute) - optimized with jitter
+const RATE_LIMIT_DELAY = 1500; // 1.5 seconds between calls (safer for free tier)
+const MAX_RETRIES = 3;
+const RETRY_DELAY_BASE = 2000; // Base retry delay in ms
 
 // Token ID mappings for supported tokens
 const TOKEN_IDS: Record<string, Record<string, string>> = {
@@ -74,7 +79,7 @@ const TOKEN_IDS: Record<string, Record<string, string>> = {
   },
 };
 
-// DEX platforms supported by CoinGecko (lowercase for matching)
+// DEX platforms supported by CoinGecko (for filtering)
 const DEX_PLATFORMS = [
   'uniswap',
   'sushiswap',
@@ -89,6 +94,9 @@ const DEX_PLATFORMS = [
   'traderjoe',
   'spookyswap',
   'spiritswap',
+  'aerodrome',
+  'camelot',
+  'velodrome',
 ];
 
 // Quote tokens for trading pairs
@@ -115,6 +123,7 @@ export interface DexPrice {
   liquidity: number;
   priceChange24h: number;
   tradeUrl: string;
+  trustScore: string;
 }
 
 export interface ArbitrageOpportunity {
@@ -133,37 +142,80 @@ export interface ArbitrageOpportunity {
   confidence: number;
   timestamp: number;
   route: string[];
+  fees: {
+    buyDexFee: number;
+    sellDexFee: number;
+    totalFees: number;
+  };
 }
 
 // Rate limiter singleton
 let lastApiCall = 0;
+let consecutiveErrors = 0;
 
 async function rateLimit(): Promise<void> {
   const now = Date.now();
   const timeSinceLastCall = now - lastApiCall;
   
-  if (timeSinceLastCall < RATE_LIMIT_DELAY) {
+  // Add jitter to prevent thundering herd
+  const jitter = Math.random() * 500;
+  const adjustedDelay = RATE_LIMIT_DELAY + jitter;
+  
+  if (timeSinceLastCall < adjustedDelay) {
     await new Promise(resolve => 
-      setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastCall)
+      setTimeout(resolve, adjustedDelay - timeSinceLastCall)
     );
   }
   
   lastApiCall = Date.now();
 }
 
-// Simple in-memory cache
-const priceCache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_DURATION = 30000; // 30 seconds
+/**
+ * Exponential backoff retry wrapper
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  operationName: string,
+  maxRetries: number = MAX_RETRIES
+): Promise<T | null> {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      consecutiveErrors = 0; // Reset error counter on success
+      return result;
+    } catch (error) {
+      consecutiveErrors++;
+      const isRateLimit = error instanceof Error && error.message.includes('429');
+      
+      if (attempt === maxRetries - 1) {
+        console.error(`${operationName} failed after ${maxRetries} attempts:`, error);
+        return null;
+      }
 
-function getCached<T>(key: string): T | null {
+      // Exponential backoff with jitter
+      const delay = RETRY_DELAY_BASE * Math.pow(2, attempt) + (Math.random() * 1000);
+      console.warn(`${operationName} attempt ${attempt + 1} failed, retrying in ${delay.toFixed(0)}ms...`);
+      
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  return null;
+}
+
+// Simple in-memory cache with TTL
+const priceCache = new Map<string, { data: unknown; timestamp: number }>();
+const CACHE_DURATION = 30000; // 30 seconds for prices
+const DEX_CACHE_DURATION = 60000; // 60 seconds for DEX prices
+
+function getCached<T>(key: string, ttlMs: number = CACHE_DURATION): T | null {
   const cached = priceCache.get(key);
-  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+  if (cached && Date.now() - cached.timestamp < ttlMs) {
     return cached.data as T;
   }
   return null;
 }
 
-function setCache(key: string, data: unknown): void {
+function setCache(key: string, data: unknown, ttlMs: number = CACHE_DURATION): void {
   priceCache.set(key, { data, timestamp: Date.now() });
 }
 
@@ -184,14 +236,17 @@ export async function getTokenPrice(
   const cached = getCached<TokenPrice>(cacheKey);
   if (cached) return cached;
 
-  await rateLimit();
+  return withRetry(async () => {
+    await rateLimit();
 
-  try {
     const response = await fetch(
       `${COINGECKO_API_BASE}/simple/price?ids=${tokenId}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`
     );
 
     if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Rate limited');
+      }
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
@@ -216,10 +271,7 @@ export async function getTokenPrice(
 
     setCache(cacheKey, result);
     return result;
-  } catch (error) {
-    console.error(`Error fetching ${tokenSymbol} price:`, error);
-    return null;
-  }
+  }, `getTokenPrice(${network}, ${tokenSymbol})`);
 }
 
 /**
@@ -248,14 +300,17 @@ export async function getMultipleTokenPrices(
   const cached = getCached<Map<string, TokenPrice>>(cacheKey);
   if (cached) return cached;
 
-  await rateLimit();
+  return withRetry(async () => {
+    await rateLimit();
 
-  try {
     const response = await fetch(
       `${COINGECKO_API_BASE}/simple/price?ids=${tokenIds}&vs_currencies=usd&include_24hr_change=true&include_24h_vol=true&include_market_cap=true`
     );
 
     if (!response.ok) {
+      if (response.status === 429) {
+        throw new Error('Rate limited');
+      }
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
@@ -282,16 +337,12 @@ export async function getMultipleTokenPrices(
     }
 
     setCache(cacheKey, results);
-  } catch (error) {
-    console.error('Error fetching multiple token prices:', error);
-  }
-
-  return results;
+    return results;
+  }, `getMultipleTokenPrices(${network})`) || results;
 }
 
 /**
  * Get prices from specific DEX on a network
- * Uses CoinGecko'sDEX ticker endpoint
  */
 export async function getDexPrices(
   network: string,
@@ -303,14 +354,15 @@ export async function getDexPrices(
     return [];
   }
 
-  await rateLimit();
+  return withRetry(async () => {
+    await rateLimit();
 
-  try {
     const response = await fetch(
       `${COINGECKO_API_BASE}/coins/${tokenId}/tickers?include_exchange=true&depth=true`
     );
 
     if (!response.ok) {
+      if (response.status === 429) throw new Error('Rate limited');
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
@@ -322,20 +374,18 @@ export async function getDexPrices(
       ticker.exchange?.name?.toLowerCase().includes(dexName.toLowerCase())
     );
 
-    return dexTickers.map((ticker: { market: { identifier: string; name: string }; base: string; target: string; last: number; volume: number; trade_url: string }) => ({
+    return dexTickers.map((ticker: { market: { identifier: string; name: string }; base: string; target: string; last: number; volume: number; trade_url: string; trust_score: string }) => ({
       dex: ticker.market?.name || dexName,
       baseToken: ticker.base,
       quoteToken: ticker.target,
       price: ticker.last,
       volume24h: ticker.volume || 0,
       liquidity: ticker.volume * ticker.last || 0,
-      priceChange24h: 0, // Tickers endpoint doesn't include 24h change
+      priceChange24h: 0,
       tradeUrl: ticker.trade_url || '',
+      trustScore: ticker.trust_score || 'unknown',
     }));
-  } catch (error) {
-    console.error(`Error fetching DEX prices from ${dexName}:`, error);
-    return [];
-  }
+  }, `getDexPrices(${network}, ${tokenSymbol}, ${dexName})`) || [];
 }
 
 /**
@@ -351,39 +401,33 @@ export async function getAllDexPricesForToken(
   }
 
   const cacheKey = `dex_prices_${network}_${tokenSymbol}`;
-  const cached = getCached<DexPrice[]>(cacheKey);
+  const cached = getCached<DexPrice[]>(cacheKey, DEX_CACHE_DURATION);
   if (cached) return cached;
 
-  await rateLimit();
+  return withRetry(async () => {
+    await rateLimit();
 
-  try {
     const response = await fetch(
       `${COINGECKO_API_BASE}/coins/${tokenId}/tickers?include_exchange=true&depth=true&order=volume_desc`
     );
 
     if (!response.ok) {
+      if (response.status === 429) throw new Error('Rate limited');
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
     const data = await response.json();
     const tickers = data.tickers || [];
 
-    // Filter for stablecoin pairs (include both DEXs and CEXs for broader arbitrage detection)
+    // Filter for relevant pairs (stablecoins and major tokens)
     const dexPrices: DexPrice[] = tickers
       .filter((ticker: { target: string; trust_score: string }) =>
-        ['USDC', 'USDT', 'DAI', 'WETH', 'ETH', 'WBTC', 'BTC', 'BUSD'].includes(ticker.target) &&
-        ticker.trust_score !== 'red' // Skip red trust score
+        ['USDC', 'USDT', 'DAI', 'WETH', 'ETH', 'WBTC', 'BTC', 'BUSD', 'USD'].some(quote => 
+          ticker.target?.toUpperCase().includes(quote)
+        ) && ticker.trust_score !== 'red'
       )
-      .slice(0, 20) // Limit to top 20 results
-      .map((ticker: {
-        market: { identifier: string; name: string };
-        base: string;
-        target: string;
-        last: number;
-        volume: number;
-        trade_url: string;
-        trust_score: string;
-      }) => ({
+      .slice(0, 20)
+      .map((ticker: { market: { identifier: string; name: string }; base: string; target: string; last: number; volume: number; trade_url: string; trust_score: string }) => ({
         dex: ticker.market?.name || 'Unknown',
         baseToken: ticker.base,
         quoteToken: ticker.target,
@@ -392,18 +436,16 @@ export async function getAllDexPricesForToken(
         liquidity: (ticker.volume || 0) * ticker.last,
         priceChange24h: ticker.trust_score === 'green' ? 0.5 : 0,
         tradeUrl: ticker.trade_url || '',
+        trustScore: ticker.trust_score || 'unknown',
       }));
 
-    setCache(cacheKey, dexPrices);
+    setCache(cacheKey, dexPrices, DEX_CACHE_DURATION);
     return dexPrices;
-  } catch (error) {
-    console.error(`Error fetching all DEX prices for ${tokenSymbol}:`, error);
-    return [];
-  }
+  }, `getAllDexPricesForToken(${network}, ${tokenSymbol})`) || [];
 }
 
 /**
- * Get price history for a token (for trend analysis)
+ * Get price history for trend analysis
  */
 export async function getPriceHistory(
   network: string,
@@ -415,14 +457,15 @@ export async function getPriceHistory(
     return [];
   }
 
-  await rateLimit();
+  return withRetry(async () => {
+    await rateLimit();
 
-  try {
     const response = await fetch(
       `${COINGECKO_API_BASE}/coins/${tokenId}/market_chart?vs_currency=usd&days=${days}&interval=hourly`
     );
 
     if (!response.ok) {
+      if (response.status === 429) throw new Error('Rate limited');
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
@@ -433,10 +476,7 @@ export async function getPriceHistory(
       timestamp,
       price,
     }));
-  } catch (error) {
-    console.error(`Error fetching price history for ${tokenSymbol}:`, error);
-    return [];
-  }
+  }, `getPriceHistory(${network}, ${tokenSymbol})`) || [];
 }
 
 /**
@@ -444,8 +484,9 @@ export async function getPriceHistory(
  * 
  * CORRECT ARBITRAGE LOGIC:
  * - Find the SAME token trading at different prices on different DEXs
- * - Buy cheap on DEX A, sell expensive on DEX B
- * - Profit = price difference (minus fees and gas)
+ * - Buy cheap on DEX A (lower price), sell expensive on DEX B (higher price)
+ * - Profit = (sellPrice - buyPrice) / buyPrice * 100 (spread percentage)
+ * - Net Profit = Gross Profit - Gas - DEX Fees
  */
 export async function scanArbitrageOpportunities(
   network: string,
@@ -454,7 +495,7 @@ export async function scanArbitrageOpportunities(
   minProfitUsd: number = 10
 ): Promise<ArbitrageOpportunity[]> {
   const opportunities: ArbitrageOpportunity[] = [];
-  const gasEstimate = 15; // Average gas cost in USD
+  const GAS_COST_USD = 15; // Average gas cost in USD for arbitrage tx
   const TRADE_AMOUNT = 10000; // Simulated $10k trade for calculations
 
   for (const [tokenSymbol, quoteToken] of tokenPairs) {
@@ -474,7 +515,7 @@ export async function scanArbitrageOpportunities(
       const tokenUsdPrice = tokenData.currentPrice;
 
       // Group prices by DEX and find best price (highest volume = most reliable)
-      const dexPriceMap = new Map<string, { price: number; volume24h: number; liquidity: number; dex: string }>();
+      const dexPriceMap = new Map<string, { price: number; volume24h: number; liquidity: number; dex: string; trustScore: string }>();
       
       for (const priceInfo of dexPrices) {
         const existing = dexPriceMap.get(priceInfo.dex);
@@ -483,7 +524,8 @@ export async function scanArbitrageOpportunities(
             price: priceInfo.price,
             volume24h: priceInfo.volume24h,
             liquidity: priceInfo.liquidity,
-            dex: priceInfo.dex
+            dex: priceInfo.dex,
+            trustScore: priceInfo.trustScore,
           });
         }
       }
@@ -492,33 +534,59 @@ export async function scanArbitrageOpportunities(
       const prices = Array.from(dexPriceMap.values());
       if (prices.length < 2) continue;
 
-      // Sort by price to find cheapest and most expensive
+      // Sort by price to find cheapest (buy) and most expensive (sell)
       prices.sort((a, b) => a.price - b.price);
 
-      const cheapest = prices[0]; // Best price to buy
-      const expensive = prices[prices.length - 1]; // Best price to sell
+      const cheapest = prices[0]; // Best price to BUY (lowest)
+      const expensive = prices[prices.length - 1]; // Best price to SELL (highest)
 
       if (cheapest.price === 0 || expensive.price === 0) continue;
 
-      // Calculate spread (percentage difference)
-      const spread = expensive.price - cheapest.price;
-      const spreadPercent = (spread / cheapest.price) * 100;
+      // Calculate spread (CORRECT formula)
+      // Spread = (sellPrice - buyPrice) / buyPrice * 100
+      const priceDiff = expensive.price - cheapest.price;
+      const spreadPercent = (priceDiff / cheapest.price) * 100;
+
+      // Estimate DEX fees ( Uniswap: 0.3%, Balancer: 0.2%, etc.)
+      const buyDexFee = estimateDexFee(cheapest.dex);
+      const sellDexFee = estimateDexFee(expensive.dex);
+      const totalFeesPercent = buyDexFee + sellDexFee;
 
       // Calculate profits
-      // Buy 1 unit cheap, sell 1 unit expensive
-      const profitPerUnit = spread;
-      const profitUsd = (profitPerUnit / cheapest.price) * TRADE_AMOUNT;
-      const netProfit = profitUsd - gasEstimate;
+      // Gross profit from spread
+      const grossProfitUsd = (spreadPercent / 100) * TRADE_AMOUNT;
+      
+      // Subtract DEX fees (percentage of trade amount)
+      const dexFeesUsd = (totalFeesPercent / 100) * TRADE_AMOUNT;
+      
+      // Net profit after all costs
+      const netProfit = grossProfitUsd - dexFeesUsd - GAS_COST_USD;
 
       // Check liquidity requirements
       const minLiquidity = 5000; // $5k minimum liquidity
+      const minTrustScore = 'yellow'; // At least yellow trust score
+
       if (
         spreadPercent >= minProfitPercent &&
-        profitUsd >= minProfitUsd &&
+        grossProfitUsd >= minProfitUsd &&
         netProfit > 0 &&
         cheapest.liquidity > minLiquidity &&
-        expensive.liquidity > minLiquidity
+        expensive.liquidity > minLiquidity &&
+        cheapest.trustScore !== 'red' &&
+        expensive.trustScore !== 'red'
       ) {
+        // Calculate confidence based on multiple factors
+        const volumeScore = Math.min((cheapest.volume24h + expensive.volume24h) / 1000000, 1); // 1M volume = max score
+        const liquidityScore = Math.min((cheapest.liquidity + expensive.liquidity) / 1000000, 1);
+        const spreadScore = Math.min(spreadPercent / 2, 1); // 2% spread = max score
+        const trustScore = (cheapest.trustScore === 'green' && expensive.trustScore === 'green') ? 1 : 
+                          (cheapest.trustScore === 'yellow' || expensive.trustScore === 'yellow') ? 0.5 : 0;
+
+        const confidence = Math.min(
+          (volumeScore * 0.2 + liquidityScore * 0.2 + spreadScore * 0.4 + trustScore * 0.2) * 100,
+          95
+        );
+
         opportunities.push({
           id: `arb-${network}-${tokenSymbol}-${quoteToken}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
           network,
@@ -529,12 +597,17 @@ export async function scanArbitrageOpportunities(
           buyPrice: cheapest.price,
           sellPrice: expensive.price,
           spreadPercent,
-          profitUsd,
-          gasEstimate,
+          profitUsd: grossProfitUsd,
+          gasEstimate: GAS_COST_USD,
           netProfit,
-          confidence: Math.min(spreadPercent * 30 + 50, 98),
+          confidence,
           timestamp: Date.now(),
           route: [tokenSymbol, quoteToken],
+          fees: {
+            buyDexFee,
+            sellDexFee,
+            totalFees: dexFeesUsd,
+          },
         });
       }
     } catch (error) {
@@ -548,8 +621,24 @@ export async function scanArbitrageOpportunities(
 }
 
 /**
+ * Estimate DEX fee based on DEX name
+ */
+function estimateDexFee(dexName: string): number {
+  const dexLower = dexName.toLowerCase();
+  
+  if (dexLower.includes('uniswap') || dexLower.includes('sushi')) return 0.3;
+  if (dexLower.includes('balancer')) return 0.2;
+  if (dexLower.includes('curve')) return 0.04;
+  if (dexLower.includes('pancake')) return 0.25;
+  if (dexLower.includes('quickswap')) return 0.3;
+  if (dexLower.includes('1inch')) return 0.5; // Aggregator fee
+  if (dexLower.includes('paraswap')) return 0.5;
+  
+  return 0.3; // Default fee
+}
+
+/**
  * Get prices for a token against a specific quote token from all DEXs
- * This is the correct way to find arbitrage - same pair across DEXs
  */
 async function getAllDexPricesForTokenOnQuote(
   network: string,
@@ -562,32 +651,34 @@ async function getAllDexPricesForTokenOnQuote(
   }
 
   const cacheKey = `dex_prices_${network}_${tokenSymbol}_${quoteToken}`;
-  const cached = getCached<DexPrice[]>(cacheKey);
+  const cached = getCached<DexPrice[]>(cacheKey, DEX_CACHE_DURATION);
   if (cached) return cached;
 
-  await rateLimit();
+  return withRetry(async () => {
+    await rateLimit();
 
-  try {
     const response = await fetch(
       `${COINGECKO_API_BASE}/coins/${tokenId}/tickers?include_exchange=true&depth=true&order=volume_desc`
     );
 
     if (!response.ok) {
+      if (response.status === 429) throw new Error('Rate limited');
       throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
     const data = await response.json();
     const tickers = data.tickers || [];
 
-    // Filter tickers by target/quote token (include both DEXs and CEXs)
+    // Filter tickers by target/quote token
+    const quoteLower = quoteToken.toLowerCase();
     const filteredTickers = tickers
       .filter((ticker: { target: string; trust_score: string }) =>
-        ticker.target?.toUpperCase() === quoteToken &&
-        ticker.trust_score !== 'red' // Skip red trust score
+        ticker.target?.toLowerCase().includes(quoteLower) &&
+        ticker.trust_score !== 'red'
       );
 
     const dexPrices: DexPrice[] = filteredTickers
-      .slice(0, 15) // Limit to top 15 results per pair
+      .slice(0, 15)
       .map((ticker: { 
         market: { identifier: string; name: string }; 
         base: string; 
@@ -595,6 +686,7 @@ async function getAllDexPricesForTokenOnQuote(
         last: number; 
         volume: number; 
         trade_url: string;
+        trust_score: string;
       }) => ({
         dex: ticker.market?.name || 'Unknown',
         baseToken: ticker.base,
@@ -604,14 +696,12 @@ async function getAllDexPricesForTokenOnQuote(
         liquidity: (ticker.volume || 0) * ticker.last,
         priceChange24h: 0,
         tradeUrl: ticker.trade_url || '',
+        trustScore: ticker.trust_score || 'unknown',
       }));
 
-    setCache(cacheKey, dexPrices);
+    setCache(cacheKey, dexPrices, DEX_CACHE_DURATION);
     return dexPrices;
-  } catch (error) {
-    console.error(`Error fetching DEX prices for ${tokenSymbol}/${quoteToken}:`, error);
-    return [];
-  }
+  }, `getAllDexPricesForTokenOnQuote(${network}, ${tokenSymbol}, ${quoteToken})`) || [];
 }
 
 /**
@@ -655,10 +745,13 @@ export function getApiStatus(): {
   isReady: boolean;
   lastCallTime: number;
   cacheSize: number;
+  consecutiveErrors: number;
 } {
   return {
     isReady: true,
     lastCallTime: lastApiCall,
     cacheSize: priceCache.size,
+    consecutiveErrors,
   };
 }
+
