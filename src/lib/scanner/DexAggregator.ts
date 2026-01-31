@@ -16,6 +16,7 @@ const RPC_URLS: Record<Network, string> = {
   bsc: 'https://bsc-dataseed.binance.org',
   optimism: 'https://optimism.drpc.org',
   base: 'https://base.drpc.org',
+  avalanche: 'https://api.avax.network/ext/bc/C/rpc',
 };
 
 // DEX Factory addresses by network
@@ -54,6 +55,11 @@ const DEX_FACTORIES: Record<Network, {
     sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
   },
   base: {
+    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+  },
+  avalanche: {
     uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
     uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
     sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
@@ -103,6 +109,13 @@ const TOKEN_ADDRESSES: Record<Network, Record<string, string>> = {
     WETH: '0x4200000000000000000000000000000000000006',
     USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
     cbETH: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0E9daF',
+  },
+  avalanche: {
+    WAVAX: '0xB31f66AA3C1e785BaF9CBe0C3c6DaF60c8b29AD8',
+    USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+    USDT: '0x9702230A6Ea8C04618D7aDB17aB9C6C0c27Ca7e6',
+    DAI: '0xd586E7F844cEa2F87f50152665BCbc2C279D8d70',
+    WBTC: '0x152b9d0FdC40C096757F570A51E494bd4b943E50',
   },
 };
 

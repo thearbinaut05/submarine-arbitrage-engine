@@ -6,6 +6,28 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Deployed PositionRebalancer contract addresses
+const POSITION_REBALANCER: Record<string, string> = {
+  ethereum: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  arbitrum: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
+  polygon: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  bsc: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  optimism: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  base: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  avalanche: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+};
+
+// Chain IDs
+const CHAIN_IDS: Record<string, number> = {
+  ethereum: 1,
+  arbitrum: 42161,
+  polygon: 137,
+  bsc: 56,
+  optimism: 10,
+  base: 8453,
+  avalanche: 43114,
+};
+
 // Lending protocol addresses
 const LENDING_PROTOCOLS: Record<string, Record<string, string>> = {
   ethereum: {
@@ -18,6 +40,19 @@ const LENDING_PROTOCOLS: Record<string, Record<string, string>> = {
   },
   polygon: {
     aave_v3: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+  },
+  bsc: {
+    venus: '0xfD36E2c2a6789Db23113685031d7F16329158384',
+  },
+  optimism: {
+    aave_v3: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+  },
+  base: {
+    aave_v3: '0xA238Dd80C259a72e81d7e4664a9801593F98d1c5',
+  },
+  avalanche: {
+    aave_v3: '0x794a61358D6845594F94dc1DB02A252b5b4814aD',
+    benqi: '0x486Af39519B4Dc9a7fCcd318217352830E8AD9b4',
   },
 };
 
@@ -32,6 +67,7 @@ interface RebalanceRequest {
   targetHealthFactor: number;
   walletAddress: string;
   useFlashLoan: boolean;
+  useGelato?: boolean;
 }
 
 serve(async (req) => {
@@ -63,33 +99,36 @@ serve(async (req) => {
     }
 
     const body: RebalanceRequest = await req.json();
-    const { network, positions, targetHealthFactor, walletAddress, useFlashLoan } = body;
+    const { network, positions, targetHealthFactor, walletAddress, useFlashLoan, useGelato } = body;
 
     // Validate network
-    if (!LENDING_PROTOCOLS[network]) {
+    if (!POSITION_REBALANCER[network]) {
       return new Response(JSON.stringify({ error: `Unsupported network: ${network}` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    const rebalancerAddress = POSITION_REBALANCER[network];
+    const networkProtocols = LENDING_PROTOCOLS[network] || {};
+
     // Build rebalancing transaction bundle
     const transactionBundle = [];
     
     for (const position of positions) {
-      const protocolAddress = LENDING_PROTOCOLS[network][position.protocol];
+      const protocolAddress = networkProtocols[position.protocol];
       if (!protocolAddress) {
         continue;
       }
 
-      const tx = buildPositionTransaction(position, protocolAddress, walletAddress);
+      const tx = buildPositionTransaction(position, protocolAddress, walletAddress, rebalancerAddress);
       transactionBundle.push(tx);
     }
 
     // If using flash loan, wrap the bundle
     let finalTransaction;
     if (useFlashLoan) {
-      finalTransaction = wrapWithFlashLoan(transactionBundle, network);
+      finalTransaction = wrapWithFlashLoan(transactionBundle, network, rebalancerAddress);
     } else {
       finalTransaction = transactionBundle;
     }
@@ -102,7 +141,7 @@ serve(async (req) => {
         type: 'rebalance',
         status: 'pending',
         network: network,
-        is_gasless: false,
+        is_gasless: useGelato || false,
         is_submarine: false,
       })
       .select()
@@ -112,13 +151,49 @@ serve(async (req) => {
       console.error('Error creating transaction:', txError);
     }
 
+    // If using Gelato for gasless execution
+    if (useGelato) {
+      const gelatoApiKey = Deno.env.get('GELATO_API_KEY');
+      if (gelatoApiKey) {
+        try {
+          const calldata = encodeRebalanceCalldata(finalTransaction);
+          const gelatoResult = await sponsoredCallWithGelato(
+            gelatoApiKey,
+            CHAIN_IDS[network],
+            rebalancerAddress,
+            calldata
+          );
+          
+          await supabase
+            .from('transactions')
+            .update({ hash: gelatoResult.taskId })
+            .eq('id', transaction?.id);
+
+          return new Response(JSON.stringify({
+            success: true,
+            taskId: gelatoResult.taskId,
+            transactionId: transaction?.id,
+            rebalancerAddress,
+            isGasless: true,
+            message: 'Position rebalance submitted via Gelato Relay',
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        } catch (gelatoError) {
+          console.error('Gelato relay failed:', gelatoError);
+        }
+      }
+    }
+
     return new Response(JSON.stringify({
       success: true,
       transactionId: transaction?.id,
       transactions: finalTransaction,
+      rebalancerAddress,
       estimatedGas: calculateBundleGas(transactionBundle),
       targetHealthFactor,
       usesFlashLoan: useFlashLoan,
+      supportedProtocols: Object.keys(networkProtocols),
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -141,17 +216,22 @@ interface PositionAction {
   amount: string;
 }
 
-function buildPositionTransaction(position: PositionAction, protocolAddress: string, walletAddress: string) {
-  // Function signatures for common lending operations
+function buildPositionTransaction(
+  position: PositionAction, 
+  protocolAddress: string, 
+  walletAddress: string,
+  rebalancerAddress: string
+) {
   const functionSignatures: Record<string, string> = {
-    deposit: '0xe8eda9df', // supply(address,uint256,address,uint16)
-    withdraw: '0x69328dec', // withdraw(address,uint256,address)
-    borrow: '0xa415bcad', // borrow(address,uint256,uint256,uint16,address)
-    repay: '0x573ade81', // repay(address,uint256,uint256,address)
+    deposit: '0xe8eda9df',
+    withdraw: '0x69328dec',
+    borrow: '0xa415bcad',
+    repay: '0x573ade81',
   };
 
   return {
-    to: protocolAddress,
+    to: rebalancerAddress,
+    protocol: protocolAddress,
     data: functionSignatures[position.action],
     params: {
       asset: position.asset,
@@ -163,6 +243,7 @@ function buildPositionTransaction(position: PositionAction, protocolAddress: str
 
 interface TransactionBundle {
   to: string;
+  protocol: string;
   data: string;
   params: {
     asset: string;
@@ -171,8 +252,7 @@ interface TransactionBundle {
   };
 }
 
-function wrapWithFlashLoan(transactions: TransactionBundle[], network: string) {
-  // Calculate total flash loan amount needed
+function wrapWithFlashLoan(transactions: TransactionBundle[], network: string, rebalancerAddress: string) {
   const totalAmount = transactions.reduce((sum, tx) => {
     return sum + parseFloat(tx.params?.amount || '0');
   }, 0);
@@ -182,14 +262,45 @@ function wrapWithFlashLoan(transactions: TransactionBundle[], network: string) {
     flashLoanAmount: totalAmount.toString(),
     innerTransactions: transactions,
     network,
+    rebalancerAddress,
   };
 }
 
-function calculateBundleGas(transactions: any[]): string {
-  // Base gas per transaction + overhead
+function calculateBundleGas(transactions: TransactionBundle[]): string {
   const baseGas = 100000;
   const perTxGas = 150000;
   const totalGas = baseGas + (transactions.length * perTxGas);
   
   return totalGas.toString();
+}
+
+function encodeRebalanceCalldata(transaction: unknown): string {
+  return btoa(JSON.stringify(transaction));
+}
+
+async function sponsoredCallWithGelato(
+  gelatoApiKey: string,
+  chainId: number,
+  target: string,
+  data: string
+): Promise<{ taskId: string }> {
+  const response = await fetch("https://api.gelato.digital/relays/v2/sponsored-call", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sponsorApiKey: gelatoApiKey,
+      chainId,
+      target,
+      data,
+      retries: 3,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gelato API error: ${response.statusText} - ${errorText}`);
+  }
+
+  const result = await response.json();
+  return { taskId: result.taskId };
 }

@@ -21,6 +21,9 @@ const networkIcons: Record<Network, string> = {
   arbitrum: '🔵',
   polygon: '🟣',
   bsc: '🟡',
+  optimism: '🔴',
+  base: '🔵',
+  avalanche: '🔺',
 };
 
 export function NetworkSelector({ currentNetwork, networks, onSelect, disabled }: NetworkSelectorProps) {

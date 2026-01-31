@@ -5,6 +5,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Deployed FlashArbExecutor contract addresses
+const FLASH_ARB_EXECUTOR: Record<string, string> = {
+  ethereum: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  arbitrum: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
+  polygon: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  bsc: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  optimism: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  base: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  avalanche: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+};
+
 // Token addresses by network
 const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
   ethereum: {
@@ -28,7 +39,7 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
   polygon: {
     WMATIC: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270',
     WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
-    USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174',
+    USDC: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
     USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
     DAI: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
   },
@@ -39,6 +50,24 @@ const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
     USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
     ETH: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
     BTCB: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c',
+  },
+  optimism: {
+    WETH: '0x4200000000000000000000000000000000000006',
+    USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
+    USDT: '0x94b008aA00579c1307B0EF2c499aD96a8f233a91',
+    DAI: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
+  },
+  base: {
+    WETH: '0x4200000000000000000000000000000000000006',
+    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+    cbETH: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0E9daF',
+  },
+  avalanche: {
+    WAVAX: '0xB31f66AA3C1e785BaF9CBe0C3c6DaF60c8b29AD8',
+    USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
+    USDT: '0x9702230A6Ea8C04618D7aDB17aB9C6C0c27Ca7e6',
+    DAI: '0xd586E7F844cEa2F87f50152665BCbc2C279D8d70',
+    WBTC: '0x152b9d0FdC40C096757F570A51E494bd4b943E50',
   },
 };
 
@@ -64,6 +93,32 @@ const DEX_FACTORIES: Record<string, { uniswapV2: string; uniswapV3: string; sush
     uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
     sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
   },
+  optimism: {
+    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+  },
+  base: {
+    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+    uniswapV3: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',
+    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+  },
+  avalanche: {
+    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
+    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
+  },
+};
+
+// RPC URLs
+const RPC_URLS: Record<string, string> = {
+  ethereum: 'https://eth.llamarpc.com',
+  arbitrum: 'https://arb1.arbitrum.io/rpc',
+  polygon: 'https://polygon-rpc.com',
+  bsc: 'https://bsc-dataseed.binance.org',
+  optimism: 'https://mainnet.optimism.io',
+  base: 'https://mainnet.base.org',
+  avalanche: 'https://api.avax.network/ext/bc/C/rpc',
 };
 
 // Uniswap V3 fee tiers
@@ -92,6 +147,7 @@ interface ArbitrageOpportunity {
   timestamp: number;
   route: string[];
   isSubmarine: boolean;
+  executorAddress: string;
 }
 
 // Fetch price from a single Uniswap V2 pair
@@ -109,7 +165,7 @@ async function fetchUniswapV2Price(
         method: 'eth_call',
         params: [{
           to: pairAddress,
-          data: '0x0902f1ac' // getReserves()
+          data: '0x0902f1ac'
         }, 'latest']
       })
     });
@@ -117,21 +173,20 @@ async function fetchUniswapV2Price(
     const data = await response.json();
     if (!data.result || data.result === '0x') return null;
 
-    // Parse reserves from hex response
     const result = data.result.slice(2);
     const reserve0 = BigInt('0x' + result.slice(0, 64));
     const reserve1 = BigInt('0x' + result.slice(64, 128));
 
     const amount0 = Number(reserve0) / 1e18;
-    const amount1 = Number(reserve1) / 1e6; // USDC has 6 decimals
+    const amount1 = Number(reserve1) / 1e6;
 
     if (amount0 === 0 || amount1 === 0) return null;
 
     const price = amount1 / amount0;
-    const liquidity = (amount0 + amount1) * 2 * 100; // Approximate USD value
+    const liquidity = (amount0 + amount1) * 2 * 100;
 
     return { price, liquidity };
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -220,7 +275,7 @@ async function getUniswapV3Price(
         method: 'eth_call',
         params: [{
           to: poolAddress,
-          data: '0x3850c7bd' // slot0()
+          data: '0x3850c7bd'
         }, 'latest']
       })
     });
@@ -228,14 +283,11 @@ async function getUniswapV3Price(
     const data = await response.json();
     if (!data.result || data.result === '0x') return null;
 
-    // Parse sqrtPriceX96
     const result = data.result.slice(2);
     const sqrtPriceX96 = BigInt('0x' + result.slice(0, 64));
-    
-    // Calculate price from sqrtPriceX96
     const price = Number(sqrtPriceX96) ** 2 / (2 ** 192);
     
-    return { price, liquidity: 1000000 }; // Placeholder
+    return { price, liquidity: 1000000 };
   } catch {
     return null;
   }
@@ -248,19 +300,14 @@ async function scanNetwork(
   minProfitUsd: number
 ): Promise<ArbitrageOpportunity[]> {
   const opportunities: ArbitrageOpportunity[] = [];
-  const rpcUrls: Record<string, string> = {
-    ethereum: 'https://eth.llamarpc.com',
-    arbitrum: 'https://arb1.arbitrum.io/rpc',
-    polygon: 'https://polygon-rpc.com',
-    bsc: 'https://bsc-dataseed.binance.org',
-  };
-
-  const rpcUrl = rpcUrls[network];
+  const rpcUrl = RPC_URLS[network];
   if (!rpcUrl) return [];
 
   const factories = DEX_FACTORIES[network];
   const tokens = TOKEN_ADDRESSES[network];
   if (!factories || !tokens) return [];
+
+  const executorAddress = FLASH_ARB_EXECUTOR[network];
 
   const tokenPairs = [
     ['WETH', 'USDC'],
@@ -278,7 +325,6 @@ async function scanNetwork(
     if (!tokenInAddr || !tokenOutAddr) continue;
 
     try {
-      // Collect prices from all DEXs
       const prices: { dex: string; price: number; liquidity: number }[] = [];
 
       // Uniswap V2
@@ -312,7 +358,6 @@ async function scanNetwork(
 
       if (prices.length < 2) continue;
 
-      // Find price differences
       for (let i = 0; i < prices.length; i++) {
         for (let j = i + 1; j < prices.length; j++) {
           const buyPrice = Math.min(prices[i].price, prices[j].price);
@@ -321,10 +366,9 @@ async function scanNetwork(
           const spread = (sellPrice - buyPrice) / buyPrice;
           const spreadPercent = spread * 100;
 
-          // Calculate profit
-          const tradeAmount = 10000; // $10k
+          const tradeAmount = 10000;
           const profitUsd = tradeAmount * spread;
-          const gasEstimate = 20; // ~$20 gas
+          const gasEstimate = 20;
           const netProfit = profitUsd - gasEstimate;
 
           if (
@@ -351,6 +395,7 @@ async function scanNetwork(
               timestamp: Date.now(),
               route: [tokenIn, tokenOut],
               isSubmarine: true,
+              executorAddress,
             });
           }
         }
@@ -374,7 +419,6 @@ serve(async (req) => {
 
     const opportunities: ArbitrageOpportunity[] = [];
 
-    // Scan each network in parallel
     const scanPromises = networks.map(network => 
       scanNetwork(network, minProfitPercent, minProfitUsd)
     );
@@ -385,7 +429,6 @@ serve(async (req) => {
       opportunities.push(...networkOpps);
     }
 
-    // Sort by net profit descending
     opportunities.sort((a, b) => b.netProfit - a.netProfit);
 
     return new Response(JSON.stringify({
@@ -394,6 +437,7 @@ serve(async (req) => {
       scannedNetworks: networks,
       totalFound: opportunities.length,
       timestamp: Date.now(),
+      deployedContracts: FLASH_ARB_EXECUTOR,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -409,4 +453,3 @@ serve(async (req) => {
     });
   }
 });
-

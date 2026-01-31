@@ -1,5 +1,5 @@
-9665
-4|3 On-Chain Price Fetcher
+/**
+ * On-Chain Price Fetcher
  * 
  * Fetches prices directly from DEX contracts on-chain
  * FIXED: Proper RPC fallback, token matching, and error handling

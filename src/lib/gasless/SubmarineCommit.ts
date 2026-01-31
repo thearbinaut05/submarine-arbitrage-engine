@@ -245,10 +245,13 @@ export class SubmarineCommit {
   private getRelayerAddress(network: Network): string {
     // This would be the GaslessRelayer contract address
     const addresses: Record<Network, string> = {
-      ethereum: '0x', // TODO: Deploy and fill in
-      arbitrum: '0x',
-      polygon: '0x',
-      bsc: '0x',
+      ethereum: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+      arbitrum: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
+      polygon: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+      bsc: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+      optimism: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+      base: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+      avalanche: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
     };
     
     // Fallback to Gelato relay for simulation

@@ -58,6 +58,9 @@ const networkIcons: Record<Network, string> = {
   arbitrum: '🔵',
   polygon: '🟣',
   bsc: '🟡',
+  optimism: '🔴',
+  base: '🔵',
+  avalanche: '🔺',
 };
 
 interface PositionRebalancerProps {

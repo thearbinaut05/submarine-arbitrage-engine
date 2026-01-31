@@ -26,6 +26,9 @@ const networkColors: Record<Network, string> = {
   arbitrum: 'bg-network-arb',
   polygon: 'bg-network-polygon',
   bsc: 'bg-network-bsc',
+  optimism: 'bg-red-500',
+  base: 'bg-blue-500',
+  avalanche: 'bg-red-600',
 };
 
 const networkIcons: Record<Network, string> = {
@@ -33,6 +36,9 @@ const networkIcons: Record<Network, string> = {
   arbitrum: '🔵',
   polygon: '🟣',
   bsc: '🟡',
+  optimism: '🔴',
+  base: '🔵',
+  avalanche: '🔺',
 };
 
 const explorerUrls: Record<Network, string> = {
@@ -40,6 +46,9 @@ const explorerUrls: Record<Network, string> = {
   arbitrum: 'https://arbiscan.io',
   polygon: 'https://polygonscan.com',
   bsc: 'https://bscscan.com',
+  optimism: 'https://optimistic.etherscan.io',
+  base: 'https://basescan.org',
+  avalanche: 'https://snowtrace.io',
 };
 
 // Format transaction hash for display
