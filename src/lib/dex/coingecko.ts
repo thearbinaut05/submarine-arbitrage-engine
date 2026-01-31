@@ -662,7 +662,3 @@ export function getApiStatus(): {
     cacheSize: priceCache.size,
   };
 }
-
-
-  'hivemapper',
-  'hivemapper',

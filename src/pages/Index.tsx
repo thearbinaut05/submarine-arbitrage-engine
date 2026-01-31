@@ -426,7 +426,7 @@ const Index = () => {
                           </div>
                           <div className="text-right">
                             <div className="text-xs text-muted-foreground mb-1">Session Profit</div>
-                            <div className="text-4xl font-bold text-accent text-glow-green">
+                            <div className="text-4xl font-bold text-accent">
                               ${stats.totalProfit.toFixed(2)}
                             </div>
                           </div>
