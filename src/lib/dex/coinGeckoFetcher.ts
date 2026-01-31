@@ -70,6 +70,12 @@ const TOKEN_PAIRS: Record<Network, string[][]> = {
     ['ETH', 'USDC'],
     ['CBETH', 'WETH'],
   ],
+  avalanche: [
+    ['WAVAX', 'USDC'],
+    ['WAVAX', 'USDT'],
+    ['WETH', 'USDC'],
+    ['AVAX', 'USDC'],
+  ],
 };
 
 export interface CoinGeckoTokenPrice {

@@ -127,6 +127,16 @@ export const NETWORKS: Record<Network, NetworkConfig> = {
     color: 'hsl(210, 100%, 50%)',
     tokenList: BASE_TOKENS,
   },
+  avalanche: {
+    id: 'avalanche',
+    name: 'Avalanche',
+    chainId: 43114,
+    rpcUrl: 'https://api.avax.network/ext/bc/C/rpc',
+    explorer: 'https://snowtrace.io',
+    nativeCurrency: { name: 'AVAX', symbol: 'AVAX', decimals: 18 },
+    color: 'hsl(0, 70%, 50%)',
+    tokenList: [],
+  },
 };
 
 export interface TokenBalance {

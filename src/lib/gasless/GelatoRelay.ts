@@ -10,14 +10,20 @@ const CHAIN_IDS: Record<Network, number> = {
   arbitrum: 42161,
   polygon: 137,
   bsc: 56,
+  optimism: 10,
+  base: 8453,
+  avalanche: 43114,
 };
 
 // Relayer addresses for each network
 const RELAYER_ADDRESSES: Record<Network, string> = {
-  ethereum: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
-  arbitrum: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
-  polygon: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
-  bsc: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
+  ethereum: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  arbitrum: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
+  polygon: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  bsc: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  optimism: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  base: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  avalanche: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
 };
 
 // Explorer URLs
@@ -26,6 +32,9 @@ const EXPLORER_URLS: Record<Network, string> = {
   arbitrum: 'https://arbiscan.io',
   polygon: 'https://polygonscan.com',
   bsc: 'https://bscscan.com',
+  optimism: 'https://optimistic.etherscan.io',
+  base: 'https://basescan.org',
+  avalanche: 'https://snowtrace.io',
 };
 
 // Meta-transaction types for EIP-712

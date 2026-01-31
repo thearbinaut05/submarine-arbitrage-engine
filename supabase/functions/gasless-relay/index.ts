@@ -6,11 +6,15 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// EIP-712 Domain for meta-transactions
-const EIP712_DOMAIN = {
-  name: 'FlashArb Relayer',
-  version: '1',
-  chainId: 1, // Will be dynamic based on network
+// Deployed GaslessRelayer contract addresses
+const GASLESS_RELAYER: Record<string, string> = {
+  ethereum: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  arbitrum: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
+  polygon: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  bsc: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  optimism: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  base: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+  avalanche: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
 };
 
 // Chain IDs for Gelato
@@ -19,6 +23,9 @@ const CHAIN_IDS: Record<string, number> = {
   arbitrum: 42161,
   polygon: 137,
   bsc: 56,
+  optimism: 10,
+  base: 8453,
+  avalanche: 43114,
 };
 
 // Explorer URLs for blockchain links
@@ -27,14 +34,9 @@ const EXPLORER_URLS: Record<string, string> = {
   arbitrum: 'https://arbiscan.io',
   polygon: 'https://polygonscan.com',
   bsc: 'https://bscscan.com',
-};
-
-// Relayer addresses (Gelato Relay contracts)
-const RELAYER_ADDRESSES: Record<string, string> = {
-  ethereum: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
-  arbitrum: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
-  polygon: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
-  bsc: '0xaBcC9b596420A9E9172FD5938620E265a0f9Df92',
+  optimism: 'https://optimistic.etherscan.io',
+  base: 'https://basescan.org',
+  avalanche: 'https://snowtrace.io',
 };
 
 // Sponsored call with Gelato
@@ -45,22 +47,16 @@ async function sponsoredCallWithGelato(
   data: string,
   isSubmarine: boolean = false
 ): Promise<{ taskId: string }> {
-  const url = isSubmarine
-    ? "https://api.gelato.digital/relays/v2/sponsored-call" // Private mempool for MEV protection
-    : "https://api.gelato.digital/relays/v2/sponsored-call";
-
-  const response = await fetch(url, {
+  const response = await fetch("https://api.gelato.digital/relays/v2/sponsored-call", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       sponsorApiKey: gelatoApiKey,
       chainId,
       target,
       data,
       retries: 3,
-      isPrivate: isSubmarine, // Enable private routing for submarine transactions
+      isPrivate: isSubmarine,
     }),
   });
 
@@ -122,7 +118,7 @@ serve(async (req) => {
     }
 
     const body: GaslessRequest = await req.json();
-    const { network, to, data, value, deadline, signature, walletAddress, isSubmarine } = body;
+    const { network, to, data, deadline, isSubmarine } = body;
 
     // Validate deadline
     if (deadline < Date.now() / 1000) {
@@ -133,14 +129,14 @@ serve(async (req) => {
     }
 
     // Validate network
-    if (!RELAYER_ADDRESSES[network]) {
+    if (!GASLESS_RELAYER[network]) {
       return new Response(JSON.stringify({ error: `Unsupported network: ${network}` }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Create transaction record with taskId (Gelato task ID)
+    // Create transaction record
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
       .insert({
@@ -150,8 +146,8 @@ serve(async (req) => {
         network: network,
         is_gasless: true,
         is_submarine: isSubmarine || false,
-        relayer_address: RELAYER_ADDRESSES[network],
-        hash: 'pending', // Will be updated with taskId
+        relayer_address: GASLESS_RELAYER[network],
+        hash: 'pending',
       })
       .select()
       .single();
@@ -164,15 +160,15 @@ serve(async (req) => {
       });
     }
 
-    // Use Gelato sponsored call for gasless execution
+    // Use Gelato sponsored call via our deployed GaslessRelayer contract
     try {
       const chainId = CHAIN_IDS[network];
+      const relayerAddress = GASLESS_RELAYER[network];
       
-      // Execute submarine transaction for MEV protection
       const result = await sponsoredCallWithGelato(
         gelatoApiKey, 
         chainId, 
-        to, 
+        to || relayerAddress, 
         data, 
         isSubmarine || false
       );
@@ -182,20 +178,19 @@ serve(async (req) => {
         .from('transactions')
         .update({
           hash: result.taskId,
-          status: 'pending', // Waiting for blockchain confirmation
+          status: 'pending',
         })
         .eq('id', transaction.id);
 
-      // Return response with explorer URL
       const explorerBase = EXPLORER_URLS[network] || 'https://etherscan.io';
       
       return new Response(JSON.stringify({
         success: true,
         transactionId: transaction.id,
         taskId: result.taskId,
-        relayer: RELAYER_ADDRESSES[network],
+        relayer: relayerAddress,
         isSubmarine: isSubmarine || false,
-        explorerUrl: `${explorerBase}/tx/`, // Will be updated with real hash when confirmed
+        explorerUrl: `${explorerBase}/tx/`,
         message: isSubmarine
           ? 'Submarine transaction submitted via Gelato Relay. Protected from MEV.'
           : 'Transaction sponsored via Gelato Relay.',
@@ -206,7 +201,6 @@ serve(async (req) => {
     } catch (gelatoError) {
       console.error('Gelato relay error:', gelatoError);
 
-      // Update transaction status to failed
       await supabase
         .from('transactions')
         .update({ status: 'failed' })
@@ -231,32 +225,3 @@ serve(async (req) => {
     });
   }
 });
-
-// Webhook endpoint for Gelato to call when transaction is confirmed
-// This is called by Gelato to update the real blockchain transaction hash
-export async function handleGelatoWebhook(
-  taskId: string,
-  realTxHash: string,
-  status: 'confirmed' | 'failed'
-) {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseKey);
-
-  const { error } = await supabase
-    .from('transactions')
-    .update({
-      real_tx_hash: realTxHash,
-      status: status,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('hash', taskId);
-
-  if (error) {
-    console.error('Failed to update transaction:', error);
-    throw error;
-  }
-
-  return { success: true };
-}
-
