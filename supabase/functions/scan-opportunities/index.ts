@@ -1,133 +1,36 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import {
+  RPC_ENDPOINTS,
+  CHAIN_IDS,
+  BLOCK_TIMES,
+  GAS_LIMITS,
+  CONTRACT_ADDRESSES,
+  AAVE_POOLS,
+  DEX_CONFIGS,
+  TOKEN_ADDRESSES,
+  PRIORITY_PAIRS,
+  SCANNER_CONFIG,
+  EXPLORER_URLS,
+} from "../_shared/mainnet-config.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Deployed FlashArbExecutor contract addresses
-const FLASH_ARB_EXECUTOR: Record<string, string> = {
-  ethereum: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-  arbitrum: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
-  polygon: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-  bsc: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-  optimism: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-  base: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-  avalanche: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-};
-
-// Token addresses by network
-const TOKEN_ADDRESSES: Record<string, Record<string, string>> = {
-  ethereum: {
-    WETH: '0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2',
-    USDC: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
-    USDT: '0xdAC17F958D2ee523a2206206994597C13D831ec7',
-    DAI: '0x6B175474E89094C44Da98b954EedeACB5BE1023a',
-    WBTC: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599',
-    LINK: '0x514910771AF9Ca656af840dff83E8264EcF986CA',
-    UNI: '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984',
-    AAVE: '0x7Fc66500c84A76Ad7e9c93437bFc5Ac33E2DDaE9',
-  },
-  arbitrum: {
-    WETH: '0x82aF49447D8a07e3bd95BD0d56f35241523fBab1',
-    USDC: '0xaf88d065e77c8cC2239327C5EDb3A432268e5831',
-    USDT: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9',
-    DAI: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
-    WBTC: '0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f',
-    LINK: '0xf97f4df75117a78c1A5a0DBb814Af92458539FB4',
-  },
-  polygon: {
-    WMATIC: '0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270',
-    WETH: '0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619',
-    USDC: '0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359',
-    USDT: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F',
-    DAI: '0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063',
-  },
-  bsc: {
-    WBNB: '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c',
-    BUSD: '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56',
-    USDT: '0x55d398326f99059fF775485246999027B3197955',
-    USDC: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
-    ETH: '0x2170Ed0880ac9A755fd29B2688956BD959F933F8',
-    BTCB: '0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c',
-  },
-  optimism: {
-    WETH: '0x4200000000000000000000000000000000000006',
-    USDC: '0x7F5c764cBc14f9669B88837ca1490cCa17c31607',
-    USDT: '0x94b008aA00579c1307B0EF2c499aD96a8f233a91',
-    DAI: '0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1',
-  },
-  base: {
-    WETH: '0x4200000000000000000000000000000000000006',
-    USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-    cbETH: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0E9daF',
-  },
-  avalanche: {
-    WAVAX: '0xB31f66AA3C1e785BaF9CBe0C3c6DaF60c8b29AD8',
-    USDC: '0xB97EF9Ef8734C71904D8002F8b6Bc66Dd9c48a6E',
-    USDT: '0x9702230A6Ea8C04618D7aDB17aB9C6C0c27Ca7e6',
-    DAI: '0xd586E7F844cEa2F87f50152665BCbc2C279D8d70',
-    WBTC: '0x152b9d0FdC40C096757F570A51E494bd4b943E50',
-  },
-};
-
-// DEX Factory addresses
-const DEX_FACTORIES: Record<string, { uniswapV2: string; uniswapV3: string; sushiswap: string }> = {
-  ethereum: {
-    uniswapV2: '0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f',
-    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    sushiswap: '0xC0AEe478e3658e2610c5F7A4A2E1777cE9e4f2Ac',
-  },
-  arbitrum: {
-    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-  },
-  polygon: {
-    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-  },
-  bsc: {
-    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-  },
-  optimism: {
-    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-  },
-  base: {
-    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-    uniswapV3: '0x33128a8fC17869897dcE68Ed026d694621f6FDfD',
-    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-  },
-  avalanche: {
-    uniswapV2: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-    uniswapV3: '0x1F98431c8aD98523631AE4a59f267346ea31F984',
-    sushiswap: '0xc35DADB83812aD9A02F9C17f614716b1D1E4dFb0',
-  },
-};
-
-// RPC URLs
-const RPC_URLS: Record<string, string> = {
-  ethereum: 'https://eth.llamarpc.com',
-  arbitrum: 'https://arb1.arbitrum.io/rpc',
-  polygon: 'https://polygon-rpc.com',
-  bsc: 'https://bsc-dataseed.binance.org',
-  optimism: 'https://mainnet.optimism.io',
-  base: 'https://mainnet.base.org',
-  avalanche: 'https://api.avax.network/ext/bc/C/rpc',
-};
-
-// Uniswap V3 fee tiers
-const UNISWAP_V3_FEE_TIERS = [500, 3000, 10000];
-
 interface ScanRequest {
   networks: string[];
-  minProfitPercent: number;
-  minProfitUsd: number;
+  minProfitPercent?: number;
+  minProfitUsd?: number;
+  maxConcurrent?: number;
+}
+
+interface PriceData {
+  dex: string;
+  price: number;
+  liquidity: number;
+  poolAddress: string;
+  feeTier?: number;
 }
 
 interface ArbitrageOpportunity {
@@ -139,86 +42,85 @@ interface ArbitrageOpportunity {
   targetDex: string;
   tokenIn: string;
   tokenOut: string;
+  tokenInAddress: string;
+  tokenOutAddress: string;
   profitPercent: number;
   profitUsd: number;
   gasEstimate: string;
+  gasEstimateUsd: number;
   netProfit: number;
   confidence: number;
   timestamp: number;
   route: string[];
   isSubmarine: boolean;
   executorAddress: string;
+  poolAddresses: { buy: string; sell: string };
+  liquidityUsd: number;
+  blockNumber: number;
 }
 
-// Fetch price from a single Uniswap V2 pair
-async function fetchUniswapV2Price(
-  rpcUrl: string,
-  pairAddress: string
-): Promise<{ price: number; liquidity: number } | null> {
-  try {
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_call',
-        params: [{
-          to: pairAddress,
-          data: '0x0902f1ac'
-        }, 'latest']
-      })
-    });
+// Fast RPC call with timeout and fallback
+async function rpcCall(
+  network: string,
+  method: string,
+  params: unknown[],
+  timeout: number = SCANNER_CONFIG.rpcTimeoutMs
+): Promise<unknown> {
+  const rpcs = RPC_ENDPOINTS[network];
+  if (!rpcs?.length) throw new Error(`No RPC for ${network}`);
 
-    const data = await response.json();
-    if (!data.result || data.result === '0x') return null;
+  for (let i = 0; i < Math.min(rpcs.length, SCANNER_CONFIG.maxRetries + 1); i++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
 
-    const result = data.result.slice(2);
-    const reserve0 = BigInt('0x' + result.slice(0, 64));
-    const reserve1 = BigInt('0x' + result.slice(64, 128));
+    try {
+      const response = await fetch(rpcs[i], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
+        signal: controller.signal,
+      });
 
-    const amount0 = Number(reserve0) / 1e18;
-    const amount1 = Number(reserve1) / 1e6;
-
-    if (amount0 === 0 || amount1 === 0) return null;
-
-    const price = amount1 / amount0;
-    const liquidity = (amount0 + amount1) * 2 * 100;
-
-    return { price, liquidity };
-  } catch {
-    return null;
+      clearTimeout(timeoutId);
+      const data = await response.json();
+      if (data.result !== undefined) return data.result;
+    } catch {
+      clearTimeout(timeoutId);
+    }
   }
+  throw new Error(`RPC failed for ${network}`);
 }
 
-// Get Uniswap V2 pair address from factory
-async function getPairAddress(
-  rpcUrl: string,
+// Get current block number
+async function getBlockNumber(network: string): Promise<number> {
+  const result = await rpcCall(network, 'eth_blockNumber', []);
+  return parseInt(result as string, 16);
+}
+
+// Get current gas price
+async function getGasPrice(network: string): Promise<number> {
+  const result = await rpcCall(network, 'eth_gasPrice', []);
+  return parseInt(result as string, 16) / 1e9; // Convert to gwei
+}
+
+// Get Uniswap V2 pair address
+async function getV2PairAddress(
+  network: string,
   factoryAddress: string,
   token0: string,
   token1: string
 ): Promise<string | null> {
   try {
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_call',
-        params: [{
-          to: factoryAddress,
-          data: '0xe6a43905' + token0.slice(2).padStart(64, '0') + token1.slice(2).padStart(64, '0')
-        }, 'latest']
-      })
-    });
-
-    const data = await response.json();
-    if (!data.result || data.result === '0x') return null;
-
-    const address = '0x' + data.result.slice(26);
+    const data = '0xe6a43905' + 
+      token0.slice(2).padStart(64, '0') + 
+      token1.slice(2).padStart(64, '0');
+    
+    const result = await rpcCall(network, 'eth_call', [{ to: factoryAddress, data }, 'latest']);
+    if (!result || result === '0x') return null;
+    
+    const address = '0x' + (result as string).slice(26);
     if (address === '0x0000000000000000000000000000000000000000') return null;
-
+    
     return address;
   } catch {
     return null;
@@ -226,185 +128,307 @@ async function getPairAddress(
 }
 
 // Get Uniswap V3 pool address
-async function getUniswapV3PoolAddress(
-  rpcUrl: string,
+async function getV3PoolAddress(
+  network: string,
   factoryAddress: string,
   token0: string,
   token1: string,
   fee: number
 ): Promise<string | null> {
   try {
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_call',
-        params: [{
-          to: factoryAddress,
-          data: '0xa16431f6' + token0.slice(2).padStart(64, '0') + token1.slice(2).padStart(64, '0') + fee.toString(16).padStart(64, '0')
-        }, 'latest']
-      })
-    });
-
-    const data = await response.json();
-    if (!data.result || data.result === '0x') return null;
-
-    const address = '0x' + data.result.slice(26);
+    const data = '0x1698ee82' + 
+      token0.slice(2).padStart(64, '0') + 
+      token1.slice(2).padStart(64, '0') + 
+      fee.toString(16).padStart(64, '0');
+    
+    const result = await rpcCall(network, 'eth_call', [{ to: factoryAddress, data }, 'latest']);
+    if (!result || result === '0x') return null;
+    
+    const address = '0x' + (result as string).slice(26);
     if (address === '0x0000000000000000000000000000000000000000') return null;
-
+    
     return address;
   } catch {
     return null;
   }
 }
 
-// Get price from Uniswap V3 pool
-async function getUniswapV3Price(
-  rpcUrl: string,
-  poolAddress: string
+// Fetch V2 price and reserves
+async function fetchV2Price(
+  network: string,
+  pairAddress: string,
+  token0Decimals: number,
+  token1Decimals: number
 ): Promise<{ price: number; liquidity: number } | null> {
   try {
-    const response = await fetch(rpcUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'eth_call',
-        params: [{
-          to: poolAddress,
-          data: '0x3850c7bd'
-        }, 'latest']
-      })
-    });
-
-    const data = await response.json();
-    if (!data.result || data.result === '0x') return null;
-
-    const result = data.result.slice(2);
-    const sqrtPriceX96 = BigInt('0x' + result.slice(0, 64));
-    const price = Number(sqrtPriceX96) ** 2 / (2 ** 192);
+    const result = await rpcCall(network, 'eth_call', [
+      { to: pairAddress, data: '0x0902f1ac' },
+      'latest'
+    ]);
     
-    return { price, liquidity: 1000000 };
+    if (!result || result === '0x') return null;
+    
+    const hex = (result as string).slice(2);
+    const reserve0 = BigInt('0x' + hex.slice(0, 64));
+    const reserve1 = BigInt('0x' + hex.slice(64, 128));
+    
+    const amount0 = Number(reserve0) / (10 ** token0Decimals);
+    const amount1 = Number(reserve1) / (10 ** token1Decimals);
+    
+    if (amount0 === 0 || amount1 === 0) return null;
+    
+    return {
+      price: amount1 / amount0,
+      liquidity: Math.min(amount0, amount1) * 2,
+    };
   } catch {
     return null;
   }
 }
 
-// Scan for arbitrage opportunities on a network
+// Fetch V3 price from slot0
+async function fetchV3Price(
+  network: string,
+  poolAddress: string,
+  token0Decimals: number,
+  token1Decimals: number
+): Promise<{ price: number; liquidity: number } | null> {
+  try {
+    // Get slot0 for sqrtPriceX96
+    const slot0Result = await rpcCall(network, 'eth_call', [
+      { to: poolAddress, data: '0x3850c7bd' },
+      'latest'
+    ]);
+    
+    if (!slot0Result || slot0Result === '0x') return null;
+    
+    const sqrtPriceX96 = BigInt('0x' + (slot0Result as string).slice(2, 66));
+    
+    // Calculate price from sqrtPriceX96
+    const price = (Number(sqrtPriceX96) ** 2 / (2 ** 192)) * 
+      (10 ** (token0Decimals - token1Decimals));
+    
+    // Get liquidity
+    const liqResult = await rpcCall(network, 'eth_call', [
+      { to: poolAddress, data: '0x1a686502' },
+      'latest'
+    ]);
+    
+    const liquidity = liqResult ? Number(BigInt(liqResult as string)) : 1000000;
+    
+    return { price, liquidity };
+  } catch {
+    return null;
+  }
+}
+
+// Scan all DEXs for a token pair
+async function scanPairPrices(
+  network: string,
+  tokenIn: string,
+  tokenOut: string
+): Promise<PriceData[]> {
+  const prices: PriceData[] = [];
+  const dexes = DEX_CONFIGS[network];
+  const tokens = TOKEN_ADDRESSES[network];
+  
+  if (!dexes || !tokens) return prices;
+  
+  const tokenInData = tokens[tokenIn];
+  const tokenOutData = tokens[tokenOut];
+  if (!tokenInData || !tokenOutData) return prices;
+  
+  const promises: Promise<void>[] = [];
+  
+  for (const [dexName, dexConfig] of Object.entries(dexes)) {
+    if (dexConfig.type === 'v2') {
+      promises.push((async () => {
+        const pairAddress = await getV2PairAddress(
+          network, dexConfig.factory, tokenInData.address, tokenOutData.address
+        );
+        if (pairAddress) {
+          const priceData = await fetchV2Price(
+            network, pairAddress, tokenInData.decimals, tokenOutData.decimals
+          );
+          if (priceData) {
+            prices.push({
+              dex: dexName,
+              ...priceData,
+              poolAddress: pairAddress,
+            });
+          }
+        }
+      })());
+    } else if (dexConfig.type === 'v3' && dexConfig.fees) {
+      for (const fee of dexConfig.fees) {
+        promises.push((async () => {
+          const poolAddress = await getV3PoolAddress(
+            network, dexConfig.factory, tokenInData.address, tokenOutData.address, fee
+          );
+          if (poolAddress) {
+            const priceData = await fetchV3Price(
+              network, poolAddress, tokenInData.decimals, tokenOutData.decimals
+            );
+            if (priceData) {
+              prices.push({
+                dex: `${dexName}_${fee / 100}bps`,
+                ...priceData,
+                poolAddress,
+                feeTier: fee,
+              });
+            }
+          }
+        })());
+      }
+    }
+  }
+  
+  await Promise.all(promises);
+  return prices;
+}
+
+// Calculate arbitrage opportunity from prices
+function calculateOpportunity(
+  network: string,
+  tokenIn: string,
+  tokenOut: string,
+  prices: PriceData[],
+  gasPrice: number,
+  blockNumber: number,
+  minProfitPercent: number,
+  minProfitUsd: number
+): ArbitrageOpportunity | null {
+  if (prices.length < 2) return null;
+  
+  const tokens = TOKEN_ADDRESSES[network];
+  const contracts = CONTRACT_ADDRESSES[network];
+  const gasLimits = GAS_LIMITS[network];
+  
+  if (!tokens || !contracts) return null;
+  
+  // Find best buy (lowest price) and sell (highest price)
+  let bestBuy = prices[0];
+  let bestSell = prices[0];
+  
+  for (const p of prices) {
+    if (p.price < bestBuy.price) bestBuy = p;
+    if (p.price > bestSell.price) bestSell = p;
+  }
+  
+  if (bestBuy.dex === bestSell.dex) return null;
+  
+  const spread = (bestSell.price - bestBuy.price) / bestBuy.price;
+  const spreadPercent = spread * 100;
+  
+  if (spreadPercent < minProfitPercent) return null;
+  
+  // Calculate trade size based on liquidity
+  const minLiquidity = Math.min(bestBuy.liquidity, bestSell.liquidity);
+  const tradeAmountUsd = Math.min(
+    SCANNER_CONFIG.defaultTradeAmountUsd,
+    minLiquidity * 0.1 // Max 10% of liquidity
+  );
+  
+  // Estimate gas cost
+  const gasUsed = 500000; // Approximate gas for flash loan arb
+  const gasCostGwei = gasUsed * gasPrice;
+  const ethPrice = 2500; // TODO: Fetch real ETH price
+  const gasCostUsd = (gasCostGwei / 1e9) * ethPrice;
+  
+  // Calculate profits
+  const grossProfitUsd = tradeAmountUsd * spread;
+  const flashLoanFee = tradeAmountUsd * 0.0009; // Aave 0.09% fee
+  const netProfitUsd = grossProfitUsd - gasCostUsd - flashLoanFee;
+  
+  if (netProfitUsd < minProfitUsd) return null;
+  
+  // Calculate confidence based on spread and liquidity
+  const liquidityScore = Math.min(minLiquidity / 100000, 1) * 30;
+  const spreadScore = Math.min(spreadPercent / 2, 1) * 40;
+  const gasSafetyScore = gasPrice < gasLimits.target ? 30 : (gasPrice < gasLimits.max ? 20 : 10);
+  const confidence = Math.min(liquidityScore + spreadScore + gasSafetyScore, 98);
+  
+  if (confidence < SCANNER_CONFIG.minConfidence) return null;
+  
+  return {
+    id: `${network}-${tokenIn}-${tokenOut}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: 'flash_loan',
+    sourceNetwork: network,
+    sourceDex: bestBuy.dex,
+    targetDex: bestSell.dex,
+    tokenIn,
+    tokenOut,
+    tokenInAddress: tokens[tokenIn].address,
+    tokenOutAddress: tokens[tokenOut].address,
+    profitPercent: spreadPercent,
+    profitUsd: grossProfitUsd,
+    gasEstimate: `$${gasCostUsd.toFixed(2)}`,
+    gasEstimateUsd: gasCostUsd,
+    netProfit: netProfitUsd,
+    confidence,
+    timestamp: Date.now(),
+    route: [tokenIn, tokenOut],
+    isSubmarine: SCANNER_CONFIG.useSubmarineTransactions,
+    executorAddress: contracts.flashArbExecutor,
+    poolAddresses: { buy: bestBuy.poolAddress, sell: bestSell.poolAddress },
+    liquidityUsd: minLiquidity,
+    blockNumber,
+  };
+}
+
+// Scan a single network for opportunities
 async function scanNetwork(
   network: string,
   minProfitPercent: number,
   minProfitUsd: number
 ): Promise<ArbitrageOpportunity[]> {
   const opportunities: ArbitrageOpportunity[] = [];
-  const rpcUrl = RPC_URLS[network];
-  if (!rpcUrl) return [];
-
-  const factories = DEX_FACTORIES[network];
-  const tokens = TOKEN_ADDRESSES[network];
-  if (!factories || !tokens) return [];
-
-  const executorAddress = FLASH_ARB_EXECUTOR[network];
-
-  const tokenPairs = [
-    ['WETH', 'USDC'],
-    ['WETH', 'USDT'],
-    ['WETH', 'DAI'],
-    ['USDC', 'USDT'],
-    ['WBTC', 'WETH'],
-    ['LINK', 'WETH'],
-  ];
-
-  for (const [tokenIn, tokenOut] of tokenPairs) {
-    const tokenInAddr = tokens[tokenIn];
-    const tokenOutAddr = tokens[tokenOut];
+  const pairs = PRIORITY_PAIRS[network];
+  
+  if (!pairs?.length) return opportunities;
+  
+  try {
+    // Get current block and gas price in parallel
+    const [blockNumber, gasPrice] = await Promise.all([
+      getBlockNumber(network),
+      getGasPrice(network),
+    ]);
     
-    if (!tokenInAddr || !tokenOutAddr) continue;
-
-    try {
-      const prices: { dex: string; price: number; liquidity: number }[] = [];
-
-      // Uniswap V2
-      const v2Pair = await getPairAddress(rpcUrl, factories.uniswapV2, tokenInAddr, tokenOutAddr);
-      if (v2Pair) {
-        const v2Price = await fetchUniswapV2Price(rpcUrl, v2Pair);
-        if (v2Price) {
-          prices.push({ dex: 'Uniswap V2', ...v2Price });
-        }
-      }
-
-      // SushiSwap
-      const sushiPair = await getPairAddress(rpcUrl, factories.sushiswap, tokenInAddr, tokenOutAddr);
-      if (sushiPair) {
-        const sushiPrice = await fetchUniswapV2Price(rpcUrl, sushiPair);
-        if (sushiPrice) {
-          prices.push({ dex: 'SushiSwap', ...sushiPrice });
-        }
-      }
-
-      // Uniswap V3
-      for (const fee of UNISWAP_V3_FEE_TIERS) {
-        const v3Pool = await getUniswapV3PoolAddress(rpcUrl, factories.uniswapV3, tokenInAddr, tokenOutAddr, fee);
-        if (v3Pool) {
-          const v3Price = await getUniswapV3Price(rpcUrl, v3Pool);
-          if (v3Price) {
-            prices.push({ dex: `Uniswap V3 (${fee / 10000}%)`, ...v3Price });
-          }
-        }
-      }
-
-      if (prices.length < 2) continue;
-
-      for (let i = 0; i < prices.length; i++) {
-        for (let j = i + 1; j < prices.length; j++) {
-          const buyPrice = Math.min(prices[i].price, prices[j].price);
-          const sellPrice = Math.max(prices[i].price, prices[j].price);
-          
-          const spread = (sellPrice - buyPrice) / buyPrice;
-          const spreadPercent = spread * 100;
-
-          const tradeAmount = 10000;
-          const profitUsd = tradeAmount * spread;
-          const gasEstimate = 20;
-          const netProfit = profitUsd - gasEstimate;
-
-          if (
-            spreadPercent >= minProfitPercent &&
-            profitUsd >= minProfitUsd &&
-            netProfit > 0
-          ) {
-            const buyDex = prices[i].price < prices[j].price ? prices[i] : prices[j];
-            const sellDex = prices[i].price < prices[j].price ? prices[j] : prices[i];
-
-            opportunities.push({
-              id: `opp-${network}-${tokenIn}-${tokenOut}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              type: 'flash_loan',
-              sourceNetwork: network,
-              sourceDex: buyDex.dex,
-              targetDex: sellDex.dex,
-              tokenIn,
-              tokenOut,
-              profitPercent: spreadPercent,
-              profitUsd,
-              gasEstimate: `$${gasEstimate.toFixed(2)}`,
-              netProfit,
-              confidence: Math.min(spreadPercent * 30 + 60, 95),
-              timestamp: Date.now(),
-              route: [tokenIn, tokenOut],
-              isSubmarine: true,
-              executorAddress,
-            });
-          }
-        }
-      }
-    } catch (error) {
-      console.error(`Error scanning ${tokenIn}/${tokenOut} on ${network}:`, error);
+    // Check if gas price is acceptable
+    const gasLimits = GAS_LIMITS[network];
+    if (gasPrice > gasLimits.max) {
+      console.log(`${network}: Gas too high (${gasPrice.toFixed(2)} gwei > ${gasLimits.max})`);
+      return opportunities;
     }
+    
+    // Scan pairs in parallel batches
+    const batchSize = SCANNER_CONFIG.maxConcurrentPairs;
+    for (let i = 0; i < pairs.length; i += batchSize) {
+      const batch = pairs.slice(i, i + batchSize);
+      
+      const batchResults = await Promise.all(
+        batch.map(async ([tokenIn, tokenOut]) => {
+          try {
+            const prices = await scanPairPrices(network, tokenIn, tokenOut);
+            return calculateOpportunity(
+              network, tokenIn, tokenOut, prices, 
+              gasPrice, blockNumber, minProfitPercent, minProfitUsd
+            );
+          } catch (error) {
+            console.error(`Error scanning ${tokenIn}/${tokenOut} on ${network}:`, error);
+            return null;
+          }
+        })
+      );
+      
+      for (const opp of batchResults) {
+        if (opp) opportunities.push(opp);
+      }
+    }
+  } catch (error) {
+    console.error(`Error scanning ${network}:`, error);
   }
-
+  
   return opportunities;
 }
 
@@ -413,40 +437,76 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+
   try {
     const body: ScanRequest = await req.json();
-    const { networks, minProfitPercent = 0.05, minProfitUsd = 10 } = body;
+    const {
+      networks,
+      minProfitPercent = SCANNER_CONFIG.minProfitPercent,
+      minProfitUsd = SCANNER_CONFIG.minProfitUsd,
+    } = body;
 
-    const opportunities: ArbitrageOpportunity[] = [];
-
-    const scanPromises = networks.map(network => 
-      scanNetwork(network, minProfitPercent, minProfitUsd)
-    );
-
-    const results = await Promise.all(scanPromises);
-    
-    for (const networkOpps of results) {
-      opportunities.push(...networkOpps);
+    // Validate networks
+    const validNetworks = networks.filter(n => RPC_ENDPOINTS[n]);
+    if (validNetworks.length === 0) {
+      return new Response(JSON.stringify({ 
+        error: 'No valid networks provided',
+        validNetworks: Object.keys(RPC_ENDPOINTS),
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    opportunities.sort((a, b) => b.netProfit - a.netProfit);
+    // Scan all networks in parallel
+    const scanResults = await Promise.all(
+      validNetworks.map(network => scanNetwork(network, minProfitPercent, minProfitUsd))
+    );
+
+    // Flatten and sort by profit
+    const allOpportunities = scanResults
+      .flat()
+      .sort((a, b) => b.netProfit - a.netProfit);
+
+    // Performance metrics
+    const scanDuration = Date.now() - startTime;
+    const networkStats = validNetworks.map((network, i) => ({
+      network,
+      opportunitiesFound: scanResults[i].length,
+      blockTime: BLOCK_TIMES[network],
+    }));
 
     return new Response(JSON.stringify({
       success: true,
-      opportunities: opportunities.slice(0, 20),
-      scannedNetworks: networks,
-      totalFound: opportunities.length,
-      timestamp: Date.now(),
-      deployedContracts: FLASH_ARB_EXECUTOR,
+      opportunities: allOpportunities.slice(0, 50), // Top 50 opportunities
+      stats: {
+        scannedNetworks: validNetworks.length,
+        totalPairsScanned: validNetworks.reduce((acc, n) => acc + (PRIORITY_PAIRS[n]?.length || 0), 0),
+        totalOpportunities: allOpportunities.length,
+        scanDurationMs: scanDuration,
+        timestamp: Date.now(),
+      },
+      networkStats,
+      config: {
+        minProfitPercent,
+        minProfitUsd,
+        submarineEnabled: SCANNER_CONFIG.useSubmarineTransactions,
+        privateMempool: SCANNER_CONFIG.usePrivateMempool,
+      },
+      contracts: CONTRACT_ADDRESSES,
+      aavePools: AAVE_POOLS,
+      explorers: EXPLORER_URLS,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
     console.error('Scanner error:', error);
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       error: error instanceof Error ? error.message : 'Unknown error',
       success: false,
+      scanDurationMs: Date.now() - startTime,
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
