@@ -432,6 +432,119 @@ async function scanNetwork(
   return opportunities;
 }
 
+// Auto-execute high-confidence opportunities
+async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promise<{
+  success: boolean;
+  taskId?: string;
+  error?: string;
+  preparedTx?: { to: string; data: string; chainId: number; gasLimit: number };
+}> {
+  const GELATO_API_KEY = Deno.env.get('GELATO_API_KEY');
+  if (!GELATO_API_KEY) {
+    return { success: false, error: 'GELATO_API_KEY not configured' };
+  }
+
+  const contracts = CONTRACT_ADDRESSES[opportunity.sourceNetwork];
+  const aavePool = AAVE_POOLS[opportunity.sourceNetwork];
+  
+  if (!contracts || !aavePool) {
+    return { success: false, error: 'Network not supported for execution' };
+  }
+
+  try {
+    console.log(`🚀 Auto-executing opportunity: ${opportunity.id}`);
+    console.log(`   Profit: ${opportunity.profitPercent.toFixed(2)}% ($${opportunity.netProfit.toFixed(2)} net)`);
+    console.log(`   Route: ${opportunity.tokenIn} → ${opportunity.tokenOut} on ${opportunity.sourceNetwork}`);
+    console.log(`   DEXs: Buy on ${opportunity.sourceDex}, Sell on ${opportunity.targetDex}`);
+
+    // Build flash loan calldata
+    const tradeAmountWei = BigInt(Math.floor(10000 * (10 ** 18))).toString(16).padStart(64, '0');
+    const minProfitWei = BigInt(Math.floor(opportunity.netProfit * 0.8 * (10 ** 18))).toString(16).padStart(64, '0');
+    
+    // executeArbitrage(address,address,uint256,uint256,address,address)
+    const functionSelector = '0x8f39d7e3';
+    const calldata = functionSelector +
+      opportunity.tokenInAddress.slice(2).padStart(64, '0') +
+      opportunity.tokenOutAddress.slice(2).padStart(64, '0') +
+      tradeAmountWei +
+      minProfitWei +
+      opportunity.poolAddresses.buy.slice(2).padStart(64, '0') +
+      opportunity.poolAddresses.sell.slice(2).padStart(64, '0');
+
+    // Try sponsored call first, fall back to call-with-sync-fee
+    let result;
+    let gelatoResponse;
+    
+    // Method 1: Sponsored call (requires contract whitelisting)
+    gelatoResponse = await fetch('https://relay.gelato.digital/relays/v2/sponsored-call', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chainId: CHAIN_IDS[opportunity.sourceNetwork],
+        target: contracts.flashArbExecutor,
+        data: calldata,
+        sponsorApiKey: GELATO_API_KEY,
+        retries: 3,
+        isPrivate: true,
+      }),
+    });
+
+    result = await gelatoResponse.json();
+    
+    // If sponsored fails, try call-with-sync-fee (pays from contract profits)
+    if (!gelatoResponse.ok || !result.taskId) {
+      console.log('Sponsored call failed, trying sync-fee relay...');
+      
+      gelatoResponse = await fetch('https://relay.gelato.digital/relays/v2/call-with-sync-fee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chainId: CHAIN_IDS[opportunity.sourceNetwork],
+          target: contracts.flashArbExecutor,
+          data: calldata,
+          feeToken: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Native token
+          isRelayContext: true,
+          retries: 3,
+        }),
+      });
+
+      result = await gelatoResponse.json();
+    }
+    
+    if (gelatoResponse.ok && result.taskId) {
+      console.log(`✅ Auto-execution submitted: ${result.taskId}`);
+      return { success: true, taskId: result.taskId };
+    } else {
+      // Return prepared transaction data for manual execution
+      console.log('Gelato relay failed, returning prepared tx data');
+      return { 
+        success: false, 
+        error: result.message || 'Relay not available',
+        preparedTx: {
+          to: contracts.flashArbExecutor,
+          data: calldata,
+          chainId: CHAIN_IDS[opportunity.sourceNetwork],
+          gasLimit: 500000,
+        }
+      };
+    }
+  } catch (error) {
+    console.error('❌ Auto-execution error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
+
+// Check if opportunity qualifies for auto-execution
+function shouldAutoExecute(opportunity: ArbitrageOpportunity): boolean {
+  if (!SCANNER_CONFIG.autoExecuteEnabled) return false;
+  
+  return (
+    opportunity.profitPercent >= SCANNER_CONFIG.autoExecuteMinProfitPercent &&
+    opportunity.confidence >= SCANNER_CONFIG.autoExecuteMinConfidence &&
+    opportunity.netProfit >= SCANNER_CONFIG.autoExecuteMinNetProfitUsd
+  );
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -469,6 +582,41 @@ serve(async (req) => {
       .flat()
       .sort((a, b) => b.netProfit - a.netProfit);
 
+    // AUTO-EXECUTE high-confidence opportunities
+    const autoExecuteResults: Array<{
+      opportunityId: string;
+      network: string;
+      tokenPair: string;
+      profitPercent: number;
+      netProfit: number;
+      success: boolean;
+      taskId?: string;
+      error?: string;
+    }> = [];
+
+    const qualifiedOpportunities = allOpportunities.filter(shouldAutoExecute);
+    
+    if (qualifiedOpportunities.length > 0) {
+      console.log(`🎯 Found ${qualifiedOpportunities.length} opportunities qualifying for auto-execution`);
+      
+      // Execute top 3 opportunities in parallel
+      const topOpportunities = qualifiedOpportunities.slice(0, 3);
+      const execPromises = topOpportunities.map(async (opp) => {
+        const result = await autoExecuteOpportunity(opp);
+        return {
+          opportunityId: opp.id,
+          network: opp.sourceNetwork,
+          tokenPair: `${opp.tokenIn}/${opp.tokenOut}`,
+          profitPercent: opp.profitPercent,
+          netProfit: opp.netProfit,
+          ...result,
+        };
+      });
+
+      const execResults = await Promise.all(execPromises);
+      autoExecuteResults.push(...execResults);
+    }
+
     // Performance metrics
     const scanDuration = Date.now() - startTime;
     const networkStats = validNetworks.map((network, i) => ({
@@ -479,7 +627,15 @@ serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
-      opportunities: allOpportunities.slice(0, 50), // Top 50 opportunities
+      opportunities: allOpportunities.slice(0, 50),
+      autoExecution: {
+        enabled: SCANNER_CONFIG.autoExecuteEnabled,
+        minProfitPercent: SCANNER_CONFIG.autoExecuteMinProfitPercent,
+        minConfidence: SCANNER_CONFIG.autoExecuteMinConfidence,
+        qualifiedCount: qualifiedOpportunities.length,
+        executedCount: autoExecuteResults.length,
+        results: autoExecuteResults,
+      },
       stats: {
         scannedNetworks: validNetworks.length,
         totalPairsScanned: validNetworks.reduce((acc, n) => acc + (PRIORITY_PAIRS[n]?.length || 0), 0),
@@ -491,6 +647,7 @@ serve(async (req) => {
       config: {
         minProfitPercent,
         minProfitUsd,
+        autoExecuteMinProfitPercent: SCANNER_CONFIG.autoExecuteMinProfitPercent,
         submarineEnabled: SCANNER_CONFIG.useSubmarineTransactions,
         privateMempool: SCANNER_CONFIG.usePrivateMempool,
       },
