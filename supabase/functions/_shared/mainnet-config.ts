@@ -431,10 +431,17 @@ export const SCANNER_CONFIG = {
   rpcTimeoutMs: 3000,
   maxRetries: 2,
   
-  // Profit thresholds (minimum to execute)
+  // Profit thresholds (minimum to display)
   minProfitPercent: 0.05,
   minProfitUsd: 5,
   minNetProfitUsd: 2,
+  
+  // AUTO-EXECUTION THRESHOLDS
+  autoExecuteEnabled: true,
+  autoExecuteMinProfitPercent: 2.0, // Only auto-execute if >= 2% profit
+  autoExecuteMinConfidence: 80,      // High confidence required
+  autoExecuteMinNetProfitUsd: 50,    // Minimum $50 net profit
+  autoExecuteMaxSlippage: 1.0,       // Tighter slippage for auto trades
   
   // Confidence thresholds
   minConfidence: 70,
