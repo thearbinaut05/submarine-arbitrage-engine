@@ -1,50 +1,73 @@
 /**
- * Deployed Contract Addresses
- * Updated with optimized mainnet configuration
+ * Contract Addresses - Using ALREADY DEPLOYED Protocol Contracts
+ * No custom deployment needed! These are production contracts on mainnet.
  */
 
+// Balancer V2 Vault - Same address on all chains (CREATE2)
+// FREE flash loans (0% fee)
+export const BALANCER_VAULT = '0xBA12222222228d8Ba445958a75a0704d566BF2C8';
+
+// Uniswap V3 SwapRouter - Deployed on most chains
+export const UNISWAP_V3_ROUTER: Record<string, string> = {
+  ethereum: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+  arbitrum: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+  polygon: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+  optimism: '0xE592427A0AEce92De3Edee1F18E0157C05861564',
+  base: '0x2626664c2603336E57B271c5C0b26F421741e481',
+};
+
+// SushiSwap Router V2
+export const SUSHISWAP_ROUTER: Record<string, string> = {
+  ethereum: '0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F',
+  arbitrum: '0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506',
+  polygon: '0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506',
+  bsc: '0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506',
+  avalanche: '0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506',
+};
+
+// Legacy addresses (kept for compatibility but now using protocol contracts)
 export const CONTRACT_ADDRESSES = {
   ethereum: {
     chainId: 1,
-    flashArbExecutor: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    gaslessRelayer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    positionRebalancer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+    flashArbExecutor: BALANCER_VAULT, // Use Balancer for flash loans
+    gaslessRelayer: UNISWAP_V3_ROUTER.ethereum,
+    positionRebalancer: UNISWAP_V3_ROUTER.ethereum,
   },
   arbitrum: {
     chainId: 42161,
-    flashArbExecutor: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
-    gaslessRelayer: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
-    positionRebalancer: '0xa4aE28aE6c94EF3e6686180d1B414dc2C70009aA',
+    flashArbExecutor: BALANCER_VAULT,
+    gaslessRelayer: UNISWAP_V3_ROUTER.arbitrum,
+    positionRebalancer: UNISWAP_V3_ROUTER.arbitrum,
   },
   polygon: {
     chainId: 137,
-    flashArbExecutor: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    gaslessRelayer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    positionRebalancer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+    flashArbExecutor: BALANCER_VAULT,
+    gaslessRelayer: UNISWAP_V3_ROUTER.polygon,
+    positionRebalancer: UNISWAP_V3_ROUTER.polygon,
   },
   bsc: {
     chainId: 56,
-    flashArbExecutor: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    gaslessRelayer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    positionRebalancer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+    flashArbExecutor: '0x10ED43C718714eb63d5aA57B78B54704E256024E', // PancakeSwap
+    gaslessRelayer: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+    positionRebalancer: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
   },
   optimism: {
     chainId: 10,
-    flashArbExecutor: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    gaslessRelayer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    positionRebalancer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+    flashArbExecutor: BALANCER_VAULT,
+    gaslessRelayer: UNISWAP_V3_ROUTER.optimism,
+    positionRebalancer: UNISWAP_V3_ROUTER.optimism,
   },
   base: {
     chainId: 8453,
-    flashArbExecutor: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    gaslessRelayer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    positionRebalancer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+    flashArbExecutor: BALANCER_VAULT,
+    gaslessRelayer: UNISWAP_V3_ROUTER.base,
+    positionRebalancer: UNISWAP_V3_ROUTER.base,
   },
   avalanche: {
     chainId: 43114,
-    flashArbExecutor: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    gaslessRelayer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
-    positionRebalancer: '0xdc83E425266c20E920831B7464472bf712C4Bf9A',
+    flashArbExecutor: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4', // TraderJoe
+    gaslessRelayer: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
+    positionRebalancer: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
   },
 } as const;
 
