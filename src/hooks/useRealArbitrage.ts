@@ -3,18 +3,25 @@ import { ethers } from 'ethers';
 import { Network, ArbitrageOpportunity } from '@/types/defi';
 import { NETWORKS } from './useWallet';
 import { supabase } from '@/integrations/supabase/client';
-import { coinGeckoFetcher } from '@/lib/dex/coinGeckoFetcher';
 
-const FLASH_ARB_EXECUTOR_ABI = [
-  'function executeFlashLoan(address asset, uint256 amount, bytes calldata params) external',
-  'function executeFlashLoanGasless(address asset, uint256 amount, bytes calldata params, address profitRecipient) external',
-  'function owner() view returns (address)',
-];
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
 function getExplorerUrl(network: Network, txHash: string): string {
   const explorerBase = NETWORKS[network]?.explorer || 'https://etherscan.io';
   return `${explorerBase}/tx/${txHash}`;
 }
+
+// Map backend network names to frontend Network type
+const NETWORK_MAP: Record<string, Network> = {
+  ethereum: 'ethereum',
+  arbitrum: 'arbitrum',
+  polygon: 'polygon',
+  bsc: 'bsc',
+  optimism: 'optimism',
+  base: 'base',
+  avalanche: 'avalanche',
+};
 
 export interface RealArbitrageState {
   opportunities: ArbitrageOpportunity[];
@@ -23,10 +30,39 @@ export interface RealArbitrageState {
   scanError: string | null;
   totalProfit: number;
   transactionsExecuted: number;
-  apiStatus: {
-    cacheSize: number;
-    lastCallTime: number;
+  networksScanned: string[];
+  scanStats: {
+    totalPairsScanned: number;
+    opportunitiesFound: number;
+    avgConfidence: number;
+    lastGasPrice: Record<string, number>;
   };
+}
+
+interface BackendOpportunity {
+  id: string;
+  type: 'flash_loan' | 'flash_swap' | 'cross_chain';
+  sourceNetwork: string;
+  targetNetwork?: string;
+  sourceDex: string;
+  targetDex: string;
+  tokenIn: string;
+  tokenOut: string;
+  tokenInAddress: string;
+  tokenOutAddress: string;
+  profitPercent: number;
+  profitUsd: number;
+  gasEstimate: string;
+  gasEstimateUsd: number;
+  netProfit: number;
+  confidence: number;
+  timestamp: number;
+  route: string[];
+  isSubmarine: boolean;
+  executorAddress: string;
+  poolAddresses: { buy: string; sell: string };
+  liquidityUsd: number;
+  blockNumber: number;
 }
 
 export function useRealArbitrage(
@@ -41,97 +77,141 @@ export function useRealArbitrage(
     scanError: null,
     totalProfit: 0,
     transactionsExecuted: 0,
-    apiStatus: {
-      cacheSize: 0,
-      lastCallTime: 0,
+    networksScanned: [],
+    scanStats: {
+      totalPairsScanned: 0,
+      opportunitiesFound: 0,
+      avgConfidence: 0,
+      lastGasPrice: {},
     },
   });
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingTxsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Convert CoinGecko opportunity to frontend format
-  const convertToOpportunity = (
-    internalOpp: Awaited<ReturnType<typeof coinGeckoFetcher.scanArbitrageOpportunities>>[number]
-  ): ArbitrageOpportunity => {
-    const gasEstimate = internalOpp.gasEstimate;
+  // Convert backend opportunity to frontend format
+  const convertToOpportunity = useCallback((backendOpp: BackendOpportunity): ArbitrageOpportunity => {
     return {
-      id: `cg-${internalOpp.network}-${internalOpp.tokenIn}-${internalOpp.tokenOut}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      type: 'flash_loan',
-      sourceNetwork: internalOpp.network,
-      sourceDex: internalOpp.buyDex,
-      targetDex: internalOpp.sellDex,
-      tokenIn: internalOpp.tokenIn,
-      tokenOut: internalOpp.tokenOut,
-      profitPercent: internalOpp.spreadPercent,
-      profitUsd: internalOpp.profitUsd,
-      gasEstimate: `$${gasEstimate.toFixed(2)}`,
-      netProfit: internalOpp.netProfit,
-      confidence: internalOpp.confidence,
-      timestamp: Date.now(),
-      route: [internalOpp.tokenIn, internalOpp.tokenOut],
+      id: backendOpp.id,
+      type: backendOpp.type,
+      sourceNetwork: NETWORK_MAP[backendOpp.sourceNetwork] || 'ethereum',
+      targetNetwork: backendOpp.targetNetwork ? NETWORK_MAP[backendOpp.targetNetwork] : undefined,
+      sourceDex: backendOpp.sourceDex,
+      targetDex: backendOpp.targetDex,
+      tokenIn: backendOpp.tokenIn,
+      tokenOut: backendOpp.tokenOut,
+      profitPercent: backendOpp.profitPercent,
+      profitUsd: backendOpp.profitUsd,
+      gasEstimate: backendOpp.gasEstimate,
+      netProfit: backendOpp.netProfit,
+      confidence: backendOpp.confidence,
+      timestamp: backendOpp.timestamp,
+      route: backendOpp.route,
       status: 'pending',
-      isSubmarine: true,
+      isSubmarine: backendOpp.isSubmarine,
     };
-  };
+  }, []);
 
-  const scanNetwork = useCallback(async (net: Network): Promise<ArbitrageOpportunity[]> => {
+  // Call the backend scanner edge function
+  const scanNetworks = useCallback(async (networksToScan: string[]): Promise<ArbitrageOpportunity[]> => {
+    if (!SUPABASE_URL) {
+      console.error('SUPABASE_URL not configured');
+      return [];
+    }
+
+    // Cancel any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     try {
-      // Update API status
-      const status = coinGeckoFetcher.getStatus();
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/scan-opportunities`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          networks: networksToScan,
+          minProfitPercent: 0.03, // Low threshold to catch more opportunities
+          minProfitUsd: 3,
+          maxConcurrent: 15,
+        }),
+        signal: abortControllerRef.current.signal,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Scanner failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      // Update scan stats
       setState(prev => ({
         ...prev,
-        apiStatus: {
-          cacheSize: status.cacheSize,
-          lastCallTime: status.lastCallTime,
+        networksScanned: result.networksScanned || networksToScan,
+        scanStats: {
+          totalPairsScanned: result.totalPairsScanned || 0,
+          opportunitiesFound: result.opportunities?.length || 0,
+          avgConfidence: result.opportunities?.length > 0 
+            ? result.opportunities.reduce((sum: number, o: BackendOpportunity) => sum + o.confidence, 0) / result.opportunities.length 
+            : 0,
+          lastGasPrice: result.gasEstimates || {},
         },
       }));
 
-      const opportunities = await coinGeckoFetcher.scanArbitrageOpportunities(
-        net,
-        0.05, // 0.05% min spread
-        5 // $5 min profit
-      );
-      return opportunities.map(convertToOpportunity);
+      if (result.opportunities && Array.isArray(result.opportunities)) {
+        return result.opportunities.map(convertToOpportunity);
+      }
+
+      return [];
     } catch (error) {
-      console.error(`Error scanning ${net}:`, error);
+      if (error instanceof Error && error.name === 'AbortError') {
+        // Request was cancelled, don't treat as error
+        return [];
+      }
+      console.error('Error scanning networks:', error);
       setState(prev => ({
         ...prev,
         scanError: error instanceof Error ? error.message : 'Unknown error',
       }));
       return [];
     }
-  }, []);
+  }, [convertToOpportunity]);
 
   const startScanning = useCallback(async () => {
-    if (!walletAddress || !network) {
-      setState(prev => ({ ...prev, scanError: 'Wallet not connected' }));
-      return;
-    }
-
-    // Clear cache for fresh data
-    coinGeckoFetcher.clearCache();
-
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
+    // Scan all 7 networks
+    const allNetworks = ['ethereum', 'arbitrum', 'polygon', 'bsc', 'optimism', 'base', 'avalanche'];
+
     try {
-      const newOpportunities = await scanNetwork(network);
+      // Initial scan
+      const newOpportunities = await scanNetworks(allNetworks);
+      
       setState(prev => ({
         ...prev,
-        opportunities: [...newOpportunities, ...prev.opportunities].slice(0, 50),
+        opportunities: [...newOpportunities, ...prev.opportunities.filter(o => 
+          // Keep old opportunities that aren't duplicates
+          !newOpportunities.some(n => n.tokenIn === o.tokenIn && n.tokenOut === o.tokenOut && n.sourceDex === o.sourceDex)
+        )].slice(0, 100), // Keep top 100
         lastScanTime: Date.now(),
-        isScanning: false,
       }));
 
-      // Continuous scanning every 10 seconds (CoinGecko rate limit)
+      // Continuous scanning every 3 seconds
       intervalRef.current = setInterval(async () => {
-        const scanned = await scanNetwork(network);
+        const scanned = await scanNetworks(allNetworks);
         setState(prev => ({
           ...prev,
-          opportunities: [...scanned, ...prev.opportunities].slice(0, 50),
+          opportunities: [...scanned, ...prev.opportunities.filter(o => 
+            !scanned.some(n => n.tokenIn === o.tokenIn && n.tokenOut === o.tokenOut && n.sourceDex === o.sourceDex)
+          )].slice(0, 100),
           lastScanTime: Date.now(),
         }));
-      }, 10000);
+      }, 3000); // 3 second interval
     } catch (error) {
       console.error('Scanning error:', error);
       setState(prev => ({
@@ -140,12 +220,16 @@ export function useRealArbitrage(
         scanError: error instanceof Error ? error.message : 'Unknown error',
       }));
     }
-  }, [walletAddress, network, scanNetwork]);
+  }, [scanNetworks]);
 
   const stopScanning = useCallback(() => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     setState(prev => ({ ...prev, isScanning: false }));
   }, []);
@@ -181,6 +265,8 @@ export function useRealArbitrage(
                 ? { ...op, status: 'completed' as const, txHash: (txData as Record<string, unknown>).real_tx_hash as string, explorerUrl, isRealExecution: true, executedAt: Date.now() }
                 : op
             ),
+            transactionsExecuted: prev.transactionsExecuted + 1,
+            totalProfit: prev.totalProfit + (prev.opportunities.find(o => o.id === opportunityId)?.netProfit || 0),
           }));
           return;
         }
@@ -195,24 +281,29 @@ export function useRealArbitrage(
           return;
         }
 
-        const provider = new ethers.JsonRpcProvider(NETWORKS[net].rpcUrl);
-        try {
-          const txReceipt = await provider.getTransactionReceipt(taskId);
-          if (txReceipt && txReceipt.blockNumber) {
-            clearInterval(pollTimer);
-            pendingTxsRef.current.delete(opportunityId);
-            const explorerUrl = getExplorerUrl(net, taskId);
-            setState(prev => ({
-              ...prev,
-              opportunities: prev.opportunities.map(op =>
-                op.id === opportunityId
-                  ? { ...op, status: 'completed' as const, txHash: taskId, explorerUrl, isRealExecution: true, executedAt: Date.now() }
-                  : op
-              ),
-            }));
-            return;
-          }
-        } catch {}
+        // Try direct RPC lookup
+        const rpcUrl = NETWORKS[net]?.rpcUrl;
+        if (rpcUrl) {
+          const provider = new ethers.JsonRpcProvider(rpcUrl);
+          try {
+            const txReceipt = await provider.getTransactionReceipt(taskId);
+            if (txReceipt && txReceipt.blockNumber) {
+              clearInterval(pollTimer);
+              pendingTxsRef.current.delete(opportunityId);
+              const explorerUrl = getExplorerUrl(net, taskId);
+              setState(prev => ({
+                ...prev,
+                opportunities: prev.opportunities.map(op =>
+                  op.id === opportunityId
+                    ? { ...op, status: 'completed' as const, txHash: taskId, explorerUrl, isRealExecution: true, executedAt: Date.now() }
+                    : op
+                ),
+                transactionsExecuted: prev.transactionsExecuted + 1,
+              }));
+              return;
+            }
+          } catch {}
+        }
 
         if (attempts >= maxAttempts) {
           clearInterval(pollTimer);
@@ -233,16 +324,18 @@ export function useRealArbitrage(
   const getAuthToken = useCallback(async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      return session?.access_token || '';
+      return session?.access_token || SUPABASE_ANON_KEY || '';
     } catch {
-      return '';
+      return SUPABASE_ANON_KEY || '';
     }
   }, []);
 
   const executeOpportunity = useCallback(async (opportunity: ArbitrageOpportunity) => {
-    if (!walletAddress || !network) {
+    if (!walletAddress) {
       throw new Error('Wallet not connected');
     }
+
+    const targetNetwork = opportunity.sourceNetwork;
 
     setState(prev => ({
       ...prev,
@@ -253,67 +346,70 @@ export function useRealArbitrage(
       ),
     }));
 
-    const FLASH_ARB_ADDRESS = import.meta.env.VITE_FLASH_ARB_ADDRESS;
-
-    if (!FLASH_ARB_ADDRESS || FLASH_ARB_ADDRESS === '0x0000000000000000000000000000000000000000') {
-      // No contract deployed - cannot execute
-      setState(prev => ({
-        ...prev,
-        opportunities: prev.opportunities.map(op =>
-          op.id === opportunity.id
-            ? { ...op, status: 'failed' as const, scanError: 'Contract not deployed' }
-            : op
-        ),
-      }));
-      throw new Error('Flash arb contract not deployed');
-    }
-
     try {
-      const amountIn = ethers.parseEther('1');
-      const params = ethers.AbiCoder.defaultAbiCoder().encode(
-        ['address', 'address', 'address', 'uint256', 'bytes', 'bytes'],
-        [opportunity.tokenIn, opportunity.tokenOut, opportunity.targetDex, 0, '0x', '0x']
-      );
-
-      const contract = new ethers.Contract(FLASH_ARB_ADDRESS, FLASH_ARB_EXECUTOR_ABI, signer);
-      const deadline = Math.floor(Date.now() / 1000) + 300;
-
-      const response = await fetch('/functions/v1/gasless-relay', {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getAuthToken()}` },
-        body: JSON.stringify({ network, to: FLASH_ARB_ADDRESS, data: contract.interface.encodeFunctionData('executeFlashLoan', [opportunity.tokenIn, amountIn, params]), value: '0x0', deadline, signature: '0x', walletAddress, isSubmarine: true }),
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${await getAuthToken()}` 
+        },
+        body: JSON.stringify({ 
+          network: targetNetwork,
+          tokenIn: opportunity.tokenIn,
+          tokenOut: opportunity.tokenOut,
+          sourceDex: opportunity.sourceDex,
+          targetDex: opportunity.targetDex,
+          profitRecipient: walletAddress,
+          minProfit: opportunity.netProfit * 0.8, // 20% slippage protection
+          isSubmarine: true,
+        }),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Relay failed: ${response.statusText} - ${errorText}`);
+        throw new Error(`Execution failed: ${response.statusText} - ${errorText}`);
       }
 
       const result = await response.json();
 
       setState(prev => ({
         ...prev,
-        opportunities: prev.opportunities.map(op => op.id === opportunity.id ? { ...op, submarinePhase: 'revealed' as const, txHash: result.taskId } : op),
+        opportunities: prev.opportunities.map(op => 
+          op.id === opportunity.id 
+            ? { ...op, submarinePhase: 'revealed' as const, txHash: result.taskId } 
+            : op
+        ),
       }));
 
       if (result.taskId) {
-        pollForTransaction(opportunity.id, network, result.taskId);
+        pollForTransaction(opportunity.id, targetNetwork, result.taskId);
       }
 
-      return { hash: result.taskId, simulated: false, isSubmarine: true, explorerUrl: result.taskId ? getExplorerUrl(network, result.taskId) : undefined };
+      return { 
+        hash: result.taskId, 
+        simulated: false, 
+        isSubmarine: true, 
+        explorerUrl: result.taskId ? getExplorerUrl(targetNetwork, result.taskId) : undefined 
+      };
     } catch (error) {
       console.error('Execution failed:', error);
       setState(prev => ({
         ...prev,
-        opportunities: prev.opportunities.map(op => op.id === opportunity.id ? { ...op, status: 'failed' as const, submarinePhase: undefined } : op),
+        opportunities: prev.opportunities.map(op => 
+          op.id === opportunity.id 
+            ? { ...op, status: 'failed' as const, submarinePhase: undefined } 
+            : op
+        ),
       }));
       throw error;
     }
-  }, [walletAddress, network, signer, getAuthToken, pollForTransaction]);
+  }, [walletAddress, getAuthToken, pollForTransaction]);
 
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
       pendingTxsRef.current.forEach((timer) => clearInterval(timer));
       pendingTxsRef.current.clear();
     };
