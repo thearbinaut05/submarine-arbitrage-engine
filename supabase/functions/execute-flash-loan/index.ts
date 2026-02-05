@@ -470,16 +470,52 @@ function getRouterForNetwork(network: string, dexName: string): { router: string
 }
 
 /**
- * Submit to Gelato for gasless execution
+ * Submit to Gelato using syncFee mode
+ * This mode pays relay fees from the transaction itself (no whitelisting needed!)
+ * Works with ANY target contract - no sponsor whitelisting required
  */
-async function submitToGelato(
+async function submitToGelatoSyncFee(
   gelatoApiKey: string,
   chainId: number,
   target: string,
   data: string,
-  isPrivate: boolean = true
+  feeToken: string = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Native token (ETH/MATIC/etc)
+  isRelayContext: boolean = false // If true, contract must implement _getFeeCollector()
 ): Promise<{ taskId: string }> {
-  const response = await fetch('https://api.gelato.digital/relays/v2/sponsored-call', {
+  // Use callWithSyncFee - pays relay fee from transaction, works with ANY contract!
+  const response = await fetch('https://api.gelato.digital/relays/v2/call-with-sync-fee', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      chainId,
+      target,
+      data,
+      feeToken, // Token to pay fee in (native = ETH/MATIC/BNB/etc)
+      isRelayContext, // false = use callWithSyncFee, true = use callWithSyncFeeERC2771
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gelato API error [${response.status}]: ${errorText}`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Alternative: Submit to Gelato using sponsoredCallERC2771
+ * This mode requires user's signature but works with any ERC2771-compatible contract
+ */
+async function submitToGelatoERC2771(
+  gelatoApiKey: string,
+  chainId: number,
+  target: string,
+  data: string,
+  userAddress: string
+): Promise<{ taskId: string }> {
+  // Use sponsoredCallERC2771 - requires ERC2771 support but no target whitelisting
+  const response = await fetch('https://api.gelato.digital/relays/v2/sponsored-call-erc2771', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -487,15 +523,13 @@ async function submitToGelato(
       chainId,
       target,
       data,
-      gasLimit: '500000',
-      retries: 2,
-      isPrivate,
+      user: userAddress,
     }),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Gelato API error [${response.status}]: ${errorText}`);
+    throw new Error(`Gelato ERC2771 API error [${response.status}]: ${errorText}`);
   }
 
   return await response.json();
@@ -715,13 +749,17 @@ serve(async (req) => {
       }
 
       try {
-        // Submit to Gelato using existing DEX router as target
-        const gelatoResult = await submitToGelato(
+        // Submit to Gelato using syncFee mode - works with ANY contract!
+        // No sponsor whitelisting required - fee paid from transaction
+        console.log(`Submitting to Gelato syncFee mode for chain ${chainId}, target: ${txData.to}`);
+        
+        const gelatoResult = await submitToGelatoSyncFee(
           gelatoApiKey,
           chainId,
           txData.to,
           txData.data,
-          SCANNER_CONFIG.usePrivateMempool
+          '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Pay fee in native token
+          false // Not using relay context
         );
 
         if (transaction) {
@@ -735,7 +773,7 @@ serve(async (req) => {
 
         return new Response(JSON.stringify({
           success: true,
-          method: executionMethod + ' + Gelato Relay',
+          method: executionMethod + ' + Gelato SyncFee Relay',
           taskId: gelatoResult.taskId,
           opportunityId: oppId,
           transactionId: transaction?.id,
@@ -752,6 +790,13 @@ serve(async (req) => {
             note: aggregatorQuote 
               ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator, no API key needed!`
               : '✅ Using direct DEX router - no custom deployment needed!',
+          },
+          
+          gelatoMode: {
+            type: 'callWithSyncFee',
+            description: 'Pays relay fee from transaction value - works with ANY target contract!',
+            feeToken: 'Native (ETH/MATIC/BNB/AVAX)',
+            noWhitelistRequired: true,
           },
           
           aggregatorDetails: aggregatorQuote ? {
