@@ -1,14 +1,52 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { ArbitrageOpportunity, ScannerConfig, Network } from '@/types/defi';
-import { coinGeckoFetcher } from '@/lib/dex/coinGeckoFetcher';
 
-// Flag to use CoinGecko API instead of on-chain RPC
-const USE_COINGECKO_API = true;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
-// Default thresholds optimized for CoinGecko API
-const DEFAULT_MIN_PROFIT_PERCENT = 0.05; // 0.05% spread
-const DEFAULT_MIN_PROFIT_USD = 5; // $5 minimum profit
-const DEFAULT_SCAN_INTERVAL = 10000; // 10 seconds (API rate limit)
+// Map backend network names to frontend Network type
+const NETWORK_MAP: Record<string, Network> = {
+  ethereum: 'ethereum',
+  arbitrum: 'arbitrum',
+  polygon: 'polygon',
+  bsc: 'bsc',
+  optimism: 'optimism',
+  base: 'base',
+  avalanche: 'avalanche',
+};
+
+// Default thresholds - using backend edge function (no rate limits, no CORS!)
+const DEFAULT_MIN_PROFIT_PERCENT = 0.05;
+const DEFAULT_MIN_PROFIT_USD = 5;
+const DEFAULT_SCAN_INTERVAL = 15000; // 15 seconds - gives time for requests to complete
+
+interface BackendOpportunity {
+  id: string;
+  type: 'flash_loan' | 'flash_swap' | 'cross_chain';
+  sourceNetwork: string;
+  targetNetwork?: string;
+  sourceDex: string;
+  targetDex: string;
+  tokenIn: string;
+  tokenOut: string;
+  tokenInAddress: string;
+  tokenOutAddress: string;
+  amountIn: string;
+  amountInUsd: number;
+  profitPercent: number;
+  profitUsd: number;
+  gasEstimate: string;
+  gasEstimateUsd: number;
+  netProfit: number;
+  confidence: number;
+  timestamp: number;
+  route: string[];
+  isSubmarine: boolean;
+  executorAddress: string;
+  poolAddresses: { buy: string; sell: string };
+  liquidityUsd: number;
+  blockNumber: number;
+}
 
 export function useArbitrageScanner() {
   const [opportunities, setOpportunities] = useState<ArbitrageOpportunity[]>([]);
@@ -36,81 +74,116 @@ export function useArbitrageScanner() {
   });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Convert CoinGecko opportunity format to frontend format
-  const convertToOpportunity = (
-    internalOpp: Awaited<ReturnType<typeof coinGeckoFetcher.scanArbitrageOpportunities>>[number]
-  ): ArbitrageOpportunity => {
+  // Convert backend opportunity to frontend format
+  const convertToOpportunity = (backendOpp: BackendOpportunity): ArbitrageOpportunity => {
     return {
-      id: `cg-${internalOpp.network}-${internalOpp.tokenIn}-${internalOpp.tokenOut}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      type: 'flash_loan',
-      sourceNetwork: internalOpp.network,
-      sourceDex: internalOpp.buyDex,
-      targetDex: internalOpp.sellDex,
-      tokenIn: internalOpp.tokenIn,
-      tokenOut: internalOpp.tokenOut,
-      profitPercent: internalOpp.spreadPercent,
-      profitUsd: internalOpp.profitUsd,
-      gasEstimate: `$${internalOpp.gasEstimate.toFixed(2)}`,
-      netProfit: internalOpp.netProfit,
-      confidence: internalOpp.confidence,
-      timestamp: Date.now(),
-      route: [internalOpp.tokenIn, internalOpp.tokenOut],
+      id: backendOpp.id,
+      type: backendOpp.type,
+      sourceNetwork: NETWORK_MAP[backendOpp.sourceNetwork] || 'ethereum',
+      targetNetwork: backendOpp.targetNetwork ? NETWORK_MAP[backendOpp.targetNetwork] : undefined,
+      sourceDex: backendOpp.sourceDex,
+      targetDex: backendOpp.targetDex,
+      tokenIn: backendOpp.tokenIn,
+      tokenOut: backendOpp.tokenOut,
+      profitPercent: backendOpp.profitPercent,
+      profitUsd: backendOpp.profitUsd,
+      gasEstimate: backendOpp.gasEstimate,
+      netProfit: backendOpp.netProfit,
+      confidence: backendOpp.confidence,
+      timestamp: backendOpp.timestamp,
+      route: backendOpp.route,
       status: 'pending',
-      isSubmarine: true,
+      isSubmarine: backendOpp.isSubmarine,
     };
   };
 
-  // Scan using CoinGecko API
-  const scanWithCoinGecko = useCallback(async () => {
-    if (!config.networks.length) return;
+  // Scan using backend edge function (NO CORS issues, NO rate limits!)
+  const scanWithBackend = useCallback(async () => {
+    if (!config.networks.length || !SUPABASE_URL) {
+      setScanError('Configuration missing');
+      return;
+    }
+
+    // Cancel any previous request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
 
     setIsScanning(true);
     setScanError(null);
 
     try {
-      // Update API status
-      const status = coinGeckoFetcher.getStatus();
-      setApiStatus({
-        cacheSize: status.cacheSize,
-        lastCallTime: status.lastCallTime,
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/scan-opportunities`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          networks: config.networks,
+          minProfitPercent: config.minProfitPercent,
+          minProfitUsd: config.minProfitUsd,
+          maxConcurrent: 15,
+        }),
+        signal: abortControllerRef.current.signal,
       });
 
-      const allOpportunities: ArbitrageOpportunity[] = [];
-
-      for (const network of config.networks) {
-        const networkOpps = await coinGeckoFetcher.scanArbitrageOpportunities(
-          network as Network,
-          config.minProfitPercent,
-          config.minProfitUsd
-        );
-        
-        for (const opp of networkOpps) {
-          allOpportunities.push(convertToOpportunity(opp));
-        }
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Scan failed: ${response.status} - ${errorText}`);
       }
 
-      // Sort by net profit and take top opportunities
-      allOpportunities.sort((a, b) => b.netProfit - a.netProfit);
-      
-      setOpportunities(prev => [...allOpportunities, ...prev].slice(0, 50));
-      setLastScanTime(Date.now());
-      
-      setStats(prev => ({
-        ...prev,
-        totalScanned: prev.totalScanned + allOpportunities.length,
-      }));
+      const result = await response.json();
 
-      if (config.autoExecute) {
-        for (const opp of allOpportunities.slice(0, 3)) {
-          if (opp.netProfit > 0 && opp.confidence > 80) {
-            setTimeout(() => executeOpportunity(opp.id), 1000);
+      // Update API status
+      setApiStatus({
+        cacheSize: result.scanStats?.totalPairsScanned || 0,
+        lastCallTime: Date.now(),
+      });
+
+      if (result.opportunities && Array.isArray(result.opportunities)) {
+        const backendOpps = result.opportunities as BackendOpportunity[];
+        const convertedOpps = backendOpps.map(convertToOpportunity);
+
+        // Sort by net profit and merge with existing
+        convertedOpps.sort((a, b) => b.netProfit - a.netProfit);
+
+        setOpportunities(prev => {
+          const merged = [...convertedOpps];
+          for (const old of prev) {
+            if (!merged.some(o => o.id === old.id)) {
+              merged.push(old);
+            }
+          }
+          return merged.slice(0, 50);
+        });
+
+        setStats(prev => ({
+          ...prev,
+          totalScanned: prev.totalScanned + convertedOpps.length,
+        }));
+
+        // Auto-execute if enabled
+        if (config.autoExecute) {
+          for (const opp of convertedOpps.slice(0, 3)) {
+            if (opp.netProfit > 0 && opp.confidence > 80) {
+              setTimeout(() => executeOpportunity(opp.id), 1000);
+            }
           }
         }
       }
+
+      setLastScanTime(Date.now());
     } catch (error) {
-      console.error('CoinGecko scan error:', error);
-      setScanError(error instanceof Error ? error.message : 'Unknown error - check API rate limits');
+      if ((error as Error).name === 'AbortError') {
+        // Request was aborted, ignore
+        return;
+      }
+      console.error('Backend scan error:', error);
+      setScanError(error instanceof Error ? error.message : 'Unknown error during scan');
     } finally {
       setIsScanning(false);
     }
@@ -118,24 +191,24 @@ export function useArbitrageScanner() {
 
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
-    
-    // Clear cache on start to get fresh data
-    coinGeckoFetcher.clearCache();
-    
+
     // Initial scan
-    scanWithCoinGecko();
-    
+    scanWithBackend();
+
     // Continuous scanning
     intervalRef.current = setInterval(() => {
-      scanWithCoinGecko();
+      scanWithBackend();
     }, config.scanInterval);
-  }, [config.scanInterval, scanWithCoinGecko]);
+  }, [config.scanInterval, scanWithBackend]);
 
   const stopScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: false }));
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
     setIsScanning(false);
   }, []);
@@ -145,31 +218,28 @@ export function useArbitrageScanner() {
   }, []);
 
   const executeOpportunity = useCallback((id: string) => {
-    setOpportunities(prev => 
-      prev.map(opp => 
+    setOpportunities(prev =>
+      prev.map(opp =>
         opp.id === id ? { ...opp, status: 'executing' as const } : opp
       )
     );
 
     setTimeout(() => {
       const success = Math.random() > 0.2;
-      setOpportunities(prev => 
-        prev.map(opp => 
-          opp.id === id 
-            ? { ...opp, status: success ? 'completed' as const : 'failed' as const } 
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id
+            ? { ...opp, status: success ? 'completed' as const : 'failed' as const }
             : opp
         )
       );
 
       if (success) {
-        const opp = opportunities.find(o => o.id === id);
-        if (opp) {
-          setStats(prev => ({
-            ...prev,
-            totalProfit: prev.totalProfit + opp.netProfit,
-            successRate: ((prev.successRate * prev.totalScanned + 1) / (prev.totalScanned + 1)),
-          }));
-        }
+        setStats(prev => ({
+          ...prev,
+          totalProfit: prev.totalProfit + (opportunities.find(o => o.id === id)?.netProfit || 0),
+          successRate: ((prev.successRate * prev.totalScanned + 1) / (prev.totalScanned + 1)),
+        }));
       }
     }, 2000 + Math.random() * 3000);
   }, [opportunities]);
@@ -183,6 +253,9 @@ export function useArbitrageScanner() {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
       }
     };
   }, []);
@@ -202,4 +275,3 @@ export function useArbitrageScanner() {
     apiStatus,
   };
 }
-
