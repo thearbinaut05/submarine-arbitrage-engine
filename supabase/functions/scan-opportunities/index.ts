@@ -44,6 +44,8 @@ interface ArbitrageOpportunity {
   tokenOut: string;
   tokenInAddress: string;
   tokenOutAddress: string;
+  amountIn: string; // Wei amount as string for BigInt compatibility
+  amountInUsd: number; // USD value of trade
   profitPercent: number;
   profitUsd: number;
   gasEstimate: string;
@@ -329,6 +331,16 @@ function calculateOpportunity(
     minLiquidity * 0.1 // Max 10% of liquidity
   );
   
+  // Calculate amountIn in wei (based on tokenIn decimals)
+  // We use the buy price to determine how much tokenIn we need for the trade
+  const tokenInDecimals = tokens[tokenIn].decimals;
+  // tradeAmountUsd is how much we want to trade in USD terms
+  // We need to convert this to tokenIn units
+  // If bestBuy.price is tokenOut/tokenIn, then we need tradeAmountUsd worth of tokenIn
+  // For simplicity, assuming base price reference, calculate tokenIn amount
+  const tokenInAmount = tradeAmountUsd / bestBuy.price; // Amount in tokenIn units
+  const amountInWei = BigInt(Math.floor(tokenInAmount * (10 ** tokenInDecimals)));
+  
   // Estimate gas cost
   const gasUsed = 500000; // Approximate gas for flash loan arb
   const gasCostGwei = gasUsed * gasPrice;
@@ -360,6 +372,8 @@ function calculateOpportunity(
     tokenOut,
     tokenInAddress: tokens[tokenIn].address,
     tokenOutAddress: tokens[tokenOut].address,
+    amountIn: amountInWei.toString(), // Wei amount as string
+    amountInUsd: tradeAmountUsd,
     profitPercent: spreadPercent,
     profitUsd: grossProfitUsd,
     gasEstimate: `$${gasCostUsd.toFixed(2)}`,

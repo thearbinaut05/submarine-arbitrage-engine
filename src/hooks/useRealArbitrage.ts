@@ -50,6 +50,8 @@ interface BackendOpportunity {
   tokenOut: string;
   tokenInAddress: string;
   tokenOutAddress: string;
+  amountIn: string; // Wei amount as string
+  amountInUsd: number;
   profitPercent: number;
   profitUsd: number;
   gasEstimate: string;
@@ -89,6 +91,8 @@ export function useRealArbitrage(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingTxsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Store full backend opportunity data including amountIn for execution
+  const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
 
   // Convert backend opportunity to frontend format
   const convertToOpportunity = useCallback((backendOpp: BackendOpportunity): ArbitrageOpportunity => {
@@ -164,6 +168,10 @@ export function useRealArbitrage(
       }));
 
       if (result.opportunities && Array.isArray(result.opportunities)) {
+        // Store backend opportunities for execution (includes amountIn)
+        for (const opp of result.opportunities as BackendOpportunity[]) {
+          backendOpportunitiesRef.current.set(opp.id, opp);
+        }
         return result.opportunities.map(convertToOpportunity);
       }
 
@@ -347,6 +355,14 @@ export function useRealArbitrage(
     }));
 
     try {
+      // Get the full backend opportunity data including amountIn
+      const backendOpp = backendOpportunitiesRef.current.get(opportunity.id);
+      const amountIn = backendOpp?.amountIn;
+      
+      if (!amountIn) {
+        throw new Error(`Missing amountIn for opportunity ${opportunity.id}. Please re-scan for opportunities.`);
+      }
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
         method: 'POST',
         headers: { 
@@ -357,6 +373,7 @@ export function useRealArbitrage(
           network: targetNetwork,
           tokenIn: opportunity.tokenIn,
           tokenOut: opportunity.tokenOut,
+          amountIn: amountIn, // Include amountIn from backend opportunity
           sourceDex: opportunity.sourceDex,
           targetDex: opportunity.targetDex,
           profitRecipient: walletAddress,
