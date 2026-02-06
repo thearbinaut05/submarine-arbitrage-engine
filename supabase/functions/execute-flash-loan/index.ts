@@ -372,12 +372,28 @@ function buildUniswapV3Calldata(
   slippageBps: number,
   fee: number = 3000 // 0.3% fee tier
 ): { to: string; data: string; value: string } {
+  // Validate inputs to prevent undefined BigInt conversion
+  if (!amountIn || amountIn === '' || amountIn === 'undefined') {
+    throw new Error(`Invalid amountIn for V3 swap: ${amountIn}`);
+  }
+  if (!tokenIn || !tokenOut || !routerAddress || !recipient) {
+    throw new Error(`Missing required parameters: tokenIn=${tokenIn}, tokenOut=${tokenOut}, router=${routerAddress}, recipient=${recipient}`);
+  }
+
   // exactInputSingle function selector
   const functionSelector = '0x414bf389';
   
   const deadline = Math.floor(Date.now() / 1000) + 1800; // 30 minutes
   const minAmountOut = BigInt(0); // No minimum for now
   const sqrtPriceLimitX96 = BigInt(0);
+  
+  // Safe BigInt conversion with detailed error
+  let amountInBigInt: bigint;
+  try {
+    amountInBigInt = BigInt(amountIn);
+  } catch (e) {
+    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${e.message}`);
+  }
   
   // ABI encode the struct: (tokenIn, tokenOut, fee, recipient, deadline, amountIn, amountOutMinimum, sqrtPriceLimitX96)
   const encodedParams = [
@@ -386,7 +402,7 @@ function buildUniswapV3Calldata(
     fee.toString(16).padStart(64, '0'),
     recipient.slice(2).toLowerCase().padStart(64, '0'),
     deadline.toString(16).padStart(64, '0'),
-    BigInt(amountIn).toString(16).padStart(64, '0'),
+    amountInBigInt.toString(16).padStart(64, '0'),
     minAmountOut.toString(16).padStart(64, '0'),
     sqrtPriceLimitX96.toString(16).padStart(64, '0'),
   ].join('');
@@ -409,18 +425,34 @@ function buildV2SwapCalldata(
   recipient: string,
   slippageBps: number
 ): { to: string; data: string; value: string } {
+  // Validate inputs to prevent undefined BigInt conversion
+  if (!amountIn || amountIn === '' || amountIn === 'undefined') {
+    throw new Error(`Invalid amountIn for V2 swap: ${amountIn}`);
+  }
+  if (!tokenIn || !tokenOut || !routerAddress || !recipient) {
+    throw new Error(`Missing required parameters: tokenIn=${tokenIn}, tokenOut=${tokenOut}, router=${routerAddress}, recipient=${recipient}`);
+  }
+
   // swapExactTokensForTokens function selector
   const functionSelector = '0x38ed1739';
   
   const deadline = Math.floor(Date.now() / 1000) + 1800;
   const minAmountOut = BigInt(0);
   
+  // Safe BigInt conversion
+  let amountInBigInt: bigint;
+  try {
+    amountInBigInt = BigInt(amountIn);
+  } catch (e) {
+    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${e.message}`);
+  }
+  
   // Path array: [tokenIn, tokenOut]
   const pathOffset = '00000000000000000000000000000000000000000000000000000000000000a0';
   const pathLength = '0000000000000000000000000000000000000000000000000000000000000002';
   
   const encodedParams = [
-    BigInt(amountIn).toString(16).padStart(64, '0'),
+    amountInBigInt.toString(16).padStart(64, '0'),
     minAmountOut.toString(16).padStart(64, '0'),
     pathOffset,
     recipient.slice(2).toLowerCase().padStart(64, '0'),
@@ -561,7 +593,7 @@ serve(async (req) => {
       network,
       tokenIn,
       tokenOut,
-      amountIn,
+      amountIn: rawAmountIn,
       sourceDex,
       targetDex,
       slippageTolerance = SCANNER_CONFIG.defaultSlippage,
@@ -569,6 +601,37 @@ serve(async (req) => {
       useGelato = true,
       opportunityId,
     } = body;
+
+    // Validate amountIn - critical for BigInt conversion
+    if (!rawAmountIn || rawAmountIn === '' || rawAmountIn === '0') {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'amountIn is required and must be a valid positive number string',
+        received: rawAmountIn,
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Safely convert to string and validate it's a valid number
+    const amountIn = String(rawAmountIn);
+    try {
+      const testBigInt = BigInt(amountIn);
+      if (testBigInt <= 0n) {
+        throw new Error('Amount must be positive');
+      }
+    } catch (e) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Invalid amountIn format: ${e.message}`,
+        received: rawAmountIn,
+        hint: 'amountIn must be a valid integer string (e.g., "1000000000000000000" for 1 ETH)',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Validate network
     const tokens = TOKEN_ADDRESSES[network];
