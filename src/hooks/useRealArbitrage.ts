@@ -193,33 +193,31 @@ export function useRealArbitrage(
   const startScanning = useCallback(async () => {
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
-    // Scan all 7 networks
+    // Scan all 7 networks - frontend sends all, backend limits to top 3
     const allNetworks = ['ethereum', 'arbitrum', 'polygon', 'bsc', 'optimism', 'base', 'avalanche'];
 
     try {
       // Initial scan
       const newOpportunities = await scanNetworks(allNetworks);
       
-      setState(prev => ({
-        ...prev,
-        opportunities: [...newOpportunities, ...prev.opportunities.filter(o => 
-          // Keep old opportunities that aren't duplicates
-          !newOpportunities.some(n => n.tokenIn === o.tokenIn && n.tokenOut === o.tokenOut && n.sourceDex === o.sourceDex)
-        )].slice(0, 100), // Keep top 100
-        lastScanTime: Date.now(),
-      }));
+      if (newOpportunities.length > 0) {
+        setState(prev => ({
+          ...prev,
+          opportunities: newOpportunities.slice(0, 100), // Start fresh with top 100
+          lastScanTime: Date.now(),
+          isScanning: true, // Keep scanning flag true for interval
+        }));
+      }
 
-      // Continuous scanning every 3 seconds
+      // Continuous scanning every 15 seconds (matches frontend interval)
       intervalRef.current = setInterval(async () => {
         const scanned = await scanNetworks(allNetworks);
         setState(prev => ({
           ...prev,
-          opportunities: [...scanned, ...prev.opportunities.filter(o => 
-            !scanned.some(n => n.tokenIn === o.tokenIn && n.tokenOut === o.tokenOut && n.sourceDex === o.sourceDex)
-          )].slice(0, 100),
+          opportunities: scanned.slice(0, 100), // Replace with latest scan results
           lastScanTime: Date.now(),
         }));
-      }, 3000); // 3 second interval
+      }, 15000); // 15 second interval
     } catch (error) {
       console.error('Scanning error:', error);
       setState(prev => ({
