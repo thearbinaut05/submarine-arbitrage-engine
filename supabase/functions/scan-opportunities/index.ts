@@ -586,37 +586,15 @@ serve(async (req) => {
       });
     }
 
-    // Prioritize networks by liquidity to manage CPU time
-    const NETWORK_PRIORITY: Record<string, number> = {
-      'ethereum': 0,   // Highest liquidity
-      'arbitrum': 1,
-      'polygon': 2,
-      'bsc': 3,
-      'base': 4,
-      'optimism': 5,
-      'avalanche': 6,
-    };
-    
-    const sortedNetworks = validNetworks
-      .sort((a, b) => (NETWORK_PRIORITY[a] || 999) - (NETWORK_PRIORITY[b] || 999))
-      .slice(0, 3); // LIMIT to top 3 networks to avoid CPU timeout
-    
-    // Scan networks sequentially to manage CPU load
-    const allOpportunities: ArbitrageOpportunity[] = [];
-    for (const network of sortedNetworks) {
-      try {
-        const networkOps = await scanNetwork(network, minProfitPercent, minProfitUsd);
-        allOpportunities.push(...networkOps);
-        
-        // Early exit if we found enough opportunities
-        if (allOpportunities.length >= 40) break;
-      } catch (error) {
-        console.error(`Failed to scan ${network}:`, error);
-      }
-    }
-    
-    // Sort all opportunities by profit and limit to top 50
-    allOpportunities.sort((a, b) => b.netProfit - a.netProfit);
+    // Scan all networks in parallel
+    const scanResults = await Promise.all(
+      validNetworks.map(network => scanNetwork(network, minProfitPercent, minProfitUsd))
+    );
+
+    // Flatten and sort by profit
+    const allOpportunities = scanResults
+      .flat()
+      .sort((a, b) => b.netProfit - a.netProfit);
 
     // AUTO-EXECUTE high-confidence opportunities
     const autoExecuteResults: Array<{
@@ -655,9 +633,9 @@ serve(async (req) => {
 
     // Performance metrics
     const scanDuration = Date.now() - startTime;
-    const networkStats = sortedNetworks.map((network) => ({
+    const networkStats = validNetworks.map((network, i) => ({
       network,
-      opportunitiesFound: allOpportunities.filter(o => o.sourceNetwork === network).length,
+      opportunitiesFound: scanResults[i].length,
       blockTime: BLOCK_TIMES[network],
     }));
 

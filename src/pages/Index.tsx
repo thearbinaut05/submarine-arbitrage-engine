@@ -72,11 +72,17 @@ const Index = () => {
   // Determine if scanner is active (either real or mock)
   const isScanning = realIsScanning || config.isActive;
 
-  // Start/stop scanner functions - always use real scanner (no wallet needed for scanning)
+  // Start/stop scanner functions - use mock scanner when no wallet connected
   const handleStartScanning = useCallback(async () => {
-    // Real scanner can scan without wallet connection
-    realStartScanning();
-  }, [realStartScanning]);
+    const signer = await getSigner();
+    if (signer) {
+      // Use real scanner with signer
+      realStartScanning();
+    } else {
+      // Fallback to mock scanner for demo
+      startScanner();
+    }
+  }, [startScanner, realStartScanning, getSigner]);
 
   const handleStopScanning = useCallback(() => {
     realStopScanning();
