@@ -38,6 +38,9 @@ const networkConfig: { id: Network; label: string; icon: string; color: string }
   { id: 'arbitrum', label: 'Arbitrum', icon: '🔵', color: 'bg-arb-blue' },
   { id: 'polygon', label: 'Polygon', icon: '🟣', color: 'bg-polygon-purple' },
   { id: 'bsc', label: 'BSC', icon: '🟡', color: 'bg-bsc-yellow' },
+  { id: 'optimism', label: 'Optimism', icon: '🔴', color: 'bg-op-red' },
+  { id: 'base', label: 'Base', icon: '🔵', color: 'bg-base-blue' },
+  { id: 'avalanche', label: 'Avalanche', icon: '🔺', color: 'bg-avax-red' },
 ];
 
 export function ScannerControls({ 

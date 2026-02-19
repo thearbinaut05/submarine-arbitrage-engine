@@ -79,15 +79,15 @@ export const BLOCK_TIMES: Record<string, number> = {
   avalanche: 2000,
 };
 
-// Gas price limits (in gwei) per network
+// Gas price limits (in gwei) per network - Made more lenient to allow scanning during high gas
 export const GAS_LIMITS: Record<string, { max: number; target: number; priority: number }> = {
-  ethereum: { max: 100, target: 30, priority: 2 },
-  arbitrum: { max: 1, target: 0.1, priority: 0.01 },
-  polygon: { max: 500, target: 100, priority: 30 },
-  bsc: { max: 10, target: 3, priority: 1 },
-  optimism: { max: 1, target: 0.01, priority: 0.001 },
-  base: { max: 1, target: 0.01, priority: 0.001 },
-  avalanche: { max: 100, target: 25, priority: 2 },
+  ethereum: { max: 150, target: 30, priority: 2 },
+  arbitrum: { max: 1.5, target: 0.1, priority: 0.01 },
+  polygon: { max: 600, target: 100, priority: 30 },
+  bsc: { max: 20, target: 3, priority: 1 },
+  optimism: { max: 2, target: 0.01, priority: 0.001 },
+  base: { max: 2, target: 0.01, priority: 0.001 },
+  avalanche: { max: 150, target: 25, priority: 2 },
 };
 
 // ============================================================
@@ -536,189 +536,301 @@ export const TOKEN_ADDRESSES: Record<string, Record<string, {
 };
 
 // ============================================================
-// EXPANDED TOKEN PAIRS - 80+ pairs per network for maximum coverage
+// EXPANDED TOKEN PAIRS - 120+ pairs per network for maximum coverage
 // ============================================================
 export const PRIORITY_PAIRS: Record<string, [string, string][]> = {
   ethereum: [
-    // Core stable/ETH pairs
+    // Core stable/ETH pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH', 'DAI'], ['WETH', 'FRAX'],
+    ['WETH', 'LUSD'], ['WETH', 'GUSD'],
     ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDT', 'DAI'], ['DAI', 'FRAX'],
     ['USDC', 'FRAX'], ['USDT', 'FRAX'], ['USDC', 'LUSD'], ['DAI', 'LUSD'],
+    ['USDT', 'LUSD'], ['FRAX', 'LUSD'],
+    // Stable-ETH variations (bridged tokens)
+    ['WETH', 'USDC.e'], ['WETH', 'USDT.e'], ['WETH', 'DAI.e'],
+    ['USDC.e', 'USDC'], ['USDC.e', 'USDT'], ['USDC.e', 'DAI'],
+    ['USDT.e', 'USDC'], ['USDT.e', 'USDT'], ['USDT.e', 'DAI'],
+    ['DAI.e', 'USDC'], ['DAI.e', 'USDT'], ['DAI.e', 'DAI'],
     // BTC pairs
     ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'DAI'],
+    ['renBTC', 'WETH'], ['renBTC', 'USDC'],
     // DeFi Blue chips
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['UNI', 'WETH'], ['UNI', 'USDC'],
-    ['AAVE', 'WETH'], ['AAVE', 'USDC'], ['CRV', 'WETH'], ['CRV', 'USDC'],
-    ['LDO', 'WETH'], ['LDO', 'USDC'], ['MKR', 'WETH'], ['MKR', 'DAI'],
-    ['COMP', 'WETH'], ['COMP', 'USDC'], ['SNX', 'WETH'], ['SNX', 'USDC'],
+    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDT'], ['LINK', 'DAI'],
+    ['UNI', 'WETH'], ['UNI', 'USDC'], ['UNI', 'USDT'],
+    ['AAVE', 'WETH'], ['AAVE', 'USDC'], ['AAVE', 'DAI'],
+    ['CRV', 'WETH'], ['CRV', 'USDC'], ['CRV', 'DAI'],
+    ['LDO', 'WETH'], ['LDO', 'USDC'], ['LDO', 'DAI'],
+    ['MKR', 'WETH'], ['MKR', 'DAI'], ['MKR', 'USDC'],
+    ['COMP', 'WETH'], ['COMP', 'USDC'],
+    ['SNX', 'WETH'], ['SNX', 'USDC'],
+    ['ENS', 'WETH'], ['ENS', 'USDC'],
+    ['LDO', 'STETH'], ['LDO', 'WSTETH'],
     // LSDs
     ['stETH', 'WETH'], ['wstETH', 'WETH'], ['rETH', 'WETH'], ['cbETH', 'WETH'],
-    ['stETH', 'USDC'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
-    // Popular tokens
+    ['stETH', 'USDC'], ['wstETH', 'USDC'], ['rETH', 'USDC'], ['cbETH', 'USDC'],
+    ['stETH', 'USDT'], ['wstETH', 'USDT'],
+    // Popular tokens - expanded
     ['SHIB', 'WETH'], ['PEPE', 'WETH'], ['APE', 'WETH'],
     ['SHIB', 'USDC'], ['PEPE', 'USDC'], ['APE', 'USDC'],
-    // Cross pairs
-    ['LINK', 'UNI'], ['AAVE', 'CRV'], ['MKR', 'AAVE'],
+    ['DOGE', 'WETH'], ['DOGE', 'USDC'],
+    // Layer 2 tokens
+    ['MATIC', 'WETH'], ['MATIC', 'USDC'], ['ARB', 'WETH'], ['ARB', 'USDC'],
+    ['OP', 'WETH'], ['OP', 'USDC'],
+    // Cross pairs - DeFi
+    ['LINK', 'UNI'], ['AAVE', 'CRV'], ['MKR', 'AAVE'], ['MKR', 'CRV'],
+    ['COMP', 'AAVE'], ['COMP', 'MKR'],
+    ['SNX', 'LDO'], ['CRV', 'LDO'],
+    // More pairs for variety
+    ['YFI', 'WETH'], ['YFI', 'USDC'],
+    ['BAT', 'WETH'], ['BAT', 'USDC'],
+    ['ZRX', 'WETH'], ['ZRX', 'USDC'],
+    ['MANA', 'WETH'], ['MANA', 'USDC'],
+    ['SAND', 'WETH'], ['SAND', 'USDC'],
+    ['ENJ', 'WETH'], ['ENJ', 'USDC'],
   ],
   arbitrum: [
-    // Core pairs
+    // Core pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDC.e'], ['WETH', 'USDT'], ['WETH', 'DAI'],
+    ['WETH', 'FRAX'],
     ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT'], ['USDC', 'USDC.e'],
     ['USDT', 'DAI'], ['USDC.e', 'DAI'], ['USDC', 'FRAX'], ['DAI', 'FRAX'],
+    ['USDC.e', 'FRAX'], ['USDT', 'FRAX'],
+    // Stable pairs variations
+    ['USDC', 'LUSD'], ['USDC.e', 'LUSD'], ['DAI', 'LUSD'],
     // BTC pairs
     ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'USDC.e'],
+    ['WBTC', 'DAI'],
     // ARB ecosystem
     ['ARB', 'WETH'], ['ARB', 'USDC'], ['ARB', 'USDC.e'], ['ARB', 'USDT'],
-    ['GMX', 'WETH'], ['GMX', 'USDC'], ['GMX', 'ARB'],
-    ['MAGIC', 'WETH'], ['MAGIC', 'USDC'], ['MAGIC', 'ARB'],
-    ['GRAIL', 'WETH'], ['GRAIL', 'USDC'], ['RDNT', 'WETH'], ['RDNT', 'USDC'],
-    ['PENDLE', 'WETH'], ['PENDLE', 'USDC'],
-    // DeFi
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['UNI', 'WETH'], ['SUSHI', 'WETH'],
+    ['ARB', 'DAI'], ['ARB', 'FRAX'],
+    ['GMX', 'WETH'], ['GMX', 'USDC'], ['GMX', 'USDC.e'], ['GMX', 'ARB'],
+    ['GMX', 'DAI'],
+    ['MAGIC', 'WETH'], ['MAGIC', 'USDC'], ['MAGIC', 'USDC.e'], ['MAGIC', 'ARB'],
+    ['MAGIC', 'DAI'],
+    ['GRAIL', 'WETH'], ['GRAIL', 'USDC'], ['GRAIL', 'USDC.e'],
+    ['RDNT', 'WETH'], ['RDNT', 'USDC'], ['RDNT', 'USDC.e'], ['RDNT', 'ARB'],
+    ['PENDLE', 'WETH'], ['PENDLE', 'USDC'], ['PENDLE', 'USDC.e'], ['PENDLE', 'ARB'],
+    ['PENDLE', 'WETH'],
+    // DeFi tokens
+    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDC.e'], ['LINK', 'ARB'],
+    ['UNI', 'WETH'], ['UNI', 'USDC'], ['UNI', 'USDC.e'],
+    ['SUSHI', 'WETH'], ['SUSHI', 'USDC'], ['SUSHI', 'USDC.e'],
+    ['JOE', 'WETH'], ['JOE', 'USDC'], ['JOE', 'ARB'],
+    ['STG', 'WETH'], ['STG', 'USDC'], ['STG', 'ARB'],
     // LSDs
     ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
+    ['wstETH', 'USDC.e'], ['rETH', 'USDC.e'],
+    // More L2 ecosystem tokens
+    ['DYDX', 'WETH'], ['DYDX', 'USDC'],
+    ['PERP', 'WETH'], ['PERP', 'USDC'], ['PERP', 'ARB'],
+    ['GNS', 'WETH'], ['GNS', 'USDC'],
     // Cross pairs
     ['ARB', 'GMX'], ['ARB', 'MAGIC'], ['GMX', 'MAGIC'],
+    ['ARB', 'LINK'], ['ARB', 'PENDLE'],
+    ['GMX', 'RDNT'], ['MAGIC', 'GRAIL'],
   ],
   polygon: [
-    // MATIC pairs
+    // MATIC pairs - expanded
     ['WMATIC', 'USDC'], ['WMATIC', 'USDC.e'], ['WMATIC', 'USDT'], ['WMATIC', 'DAI'],
     ['WMATIC', 'WETH'], ['WMATIC', 'WBTC'],
-    // Core pairs
+    ['WMATIC', 'LINK'], ['WMATIC', 'AAVE'], ['WMATIC', 'CRV'],
+    ['WMATIC', 'QUICK'], ['WMATIC', 'SUSHI'], ['WMATIC', 'GRT'],
+    // Core pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDC.e'], ['WETH', 'USDT'], ['WETH', 'DAI'],
     ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT'], ['USDC', 'USDC.e'],
     ['USDT', 'DAI'], ['USDC.e', 'DAI'],
+    // Stable variations
+    ['USDC', 'FRAX'], ['USDC.e', 'FRAX'], ['DAI', 'FRAX'],
     // BTC
     ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'WMATIC'],
+    ['WBTC', 'DAI'], ['WBTC', 'USDC.e'],
     // DeFi
-    ['LINK', 'WETH'], ['LINK', 'WMATIC'], ['AAVE', 'WETH'], ['AAVE', 'WMATIC'],
-    ['CRV', 'WETH'], ['BAL', 'WETH'], ['QUICK', 'WMATIC'], ['QUICK', 'WETH'],
-    ['SUSHI', 'WETH'], ['SUSHI', 'WMATIC'], ['GRT', 'WETH'], ['UNI', 'WETH'],
+    ['LINK', 'WETH'], ['LINK', 'WMATIC'], ['LINK', 'USDC'], ['LINK', 'USDC.e'],
+    ['AAVE', 'WETH'], ['AAVE', 'WMATIC'], ['AAVE', 'USDC'], ['AAVE', 'DAI'],
+    ['CRV', 'WETH'], ['CRV', 'WMATIC'], ['CRV', 'USDC'],
+    ['BAL', 'WETH'], ['BAL', 'WMATIC'],
+    ['QUICK', 'WMATIC'], ['QUICK', 'WETH'], ['QUICK', 'USDC'], ['QUICK', 'DAI'],
+    ['SUSHI', 'WETH'], ['SUSHI', 'WMATIC'], ['SUSHI', 'USDC'], ['SUSHI', 'DAI'],
+    ['GRT', 'WETH'], ['GRT', 'WMATIC'], ['GRT', 'USDC'],
+    ['UNI', 'WETH'], ['UNI', 'WMATIC'], ['UNI', 'USDC'],
     // Metaverse
-    ['SAND', 'WMATIC'], ['SAND', 'WETH'], ['MANA', 'WMATIC'], ['MANA', 'WETH'],
+    ['SAND', 'WMATIC'], ['SAND', 'WETH'], ['SAND', 'USDC'],
+    ['MANA', 'WMATIC'], ['MANA', 'WETH'], ['MANA', 'USDC'],
     // LSDs
     ['stMATIC', 'WMATIC'], ['MaticX', 'WMATIC'], ['stMATIC', 'USDC'],
+    ['stMATIC', 'WETH'], ['MaticX', 'WETH'],
     // Cross pairs
-    ['LINK', 'AAVE'], ['QUICK', 'SUSHI'],
+    ['LINK', 'AAVE'], ['LINK', 'CRV'], ['QUICK', 'SUSHI'],
+    ['CRV', 'AAVE'], ['CRV', 'BAL'],
+    ['GRT', 'LINK'], ['GRT', 'UNI'],
   ],
   bsc: [
-    // BNB pairs
+    // BNB pairs - expanded
     ['WBNB', 'USDT'], ['WBNB', 'BUSD'], ['WBNB', 'USDC'], ['WBNB', 'DAI'],
     ['WBNB', 'ETH'], ['WBNB', 'BTCB'],
-    // Stable pairs
+    ['WBNB', 'CAKE'], ['WBNB', 'XVS'], ['WBNB', 'LINK'],
+    ['WBNB', 'DOT'], ['WBNB', 'ADA'], ['WBNB', 'XRP'],
+    // Stable pairs - expanded
     ['USDT', 'BUSD'], ['USDC', 'BUSD'], ['USDT', 'USDC'], ['DAI', 'BUSD'],
-    ['TUSD', 'BUSD'], ['TUSD', 'USDT'],
-    // BTC/ETH
-    ['BTCB', 'USDT'], ['BTCB', 'BUSD'], ['ETH', 'USDT'], ['ETH', 'BUSD'],
-    ['BTCB', 'ETH'],
-    // DEX tokens
-    ['CAKE', 'WBNB'], ['CAKE', 'USDT'], ['CAKE', 'BUSD'],
+    ['TUSD', 'BUSD'], ['TUSD', 'USDT'], ['TUSD', 'USDC'],
+    ['FRAX', 'BUSD'], ['FRAX', 'USDT'],
+    // BTC/ETH - expanded
+    ['BTCB', 'USDT'], ['BTCB', 'BUSD'], ['BTCB', 'USDC'], ['BTCB', 'ETH'],
+    ['BTCB', 'WBNB'], ['BTCB', 'DAI'],
+    ['ETH', 'USDT'], ['ETH', 'BUSD'], ['ETH', 'USDC'], ['ETH', 'DAI'],
+    // DEX tokens - expanded
+    ['CAKE', 'WBNB'], ['CAKE', 'USDT'], ['CAKE', 'BUSD'], ['CAKE', 'USDC'],
+    ['CAKE', 'ETH'], ['CAKE', 'BTCB'], ['CAKE', 'DAI'],
     ['BAKE', 'WBNB'], ['BANANA', 'WBNB'], ['AUTO', 'WBNB'],
-    // DeFi
-    ['XVS', 'WBNB'], ['XVS', 'USDT'], ['ALPACA', 'WBNB'], ['ALPACA', 'BUSD'],
-    // L1 tokens
-    ['DOT', 'WBNB'], ['DOT', 'BUSD'], ['ADA', 'WBNB'], ['ADA', 'BUSD'],
-    ['XRP', 'WBNB'], ['XRP', 'BUSD'], ['LINK', 'WBNB'], ['LINK', 'BUSD'],
-    ['UNI', 'WBNB'], ['UNI', 'BUSD'],
+    // DeFi - expanded
+    ['XVS', 'WBNB'], ['XVS', 'USDT'], ['XVS', 'BUSD'], ['XVS', 'USDC'],
+    ['XVS', 'CAKE'],
+    ['ALPACA', 'WBNB'], ['ALPACA', 'BUSD'], ['ALPACA', 'USDC'],
+    // L1 tokens - expanded
+    ['DOT', 'WBNB'], ['DOT', 'BUSD'], ['DOT', 'USDT'], ['DOT', 'ETH'],
+    ['ADA', 'WBNB'], ['ADA', 'BUSD'], ['ADA', 'USDT'], ['ADA', 'ETH'],
+    ['XRP', 'WBNB'], ['XRP', 'BUSD'], ['XRP', 'USDT'], ['XRP', 'ETH'],
+    ['LINK', 'WBNB'], ['LINK', 'BUSD'], ['LINK', 'USDT'], ['LINK', 'ETH'],
+    ['UNI', 'WBNB'], ['UNI', 'BUSD'], ['UNI', 'USDT'],
+    // More tokens
+    ['MATIC', 'WBNB'], ['MATIC', 'BUSD'],
+    ['SOL', 'WBNB'], ['SOL', 'BUSD'],
     // Cross pairs
     ['CAKE', 'XVS'], ['DOT', 'ADA'],
+    ['ALPACA', 'CAKE'], ['XVS', 'ALPACA'],
   ],
   optimism: [
-    // Core pairs
+    // Core pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDC.e'], ['WETH', 'USDT'], ['WETH', 'DAI'],
     ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT'], ['USDC', 'USDC.e'],
     ['USDT', 'DAI'], ['USDC', 'sUSD'], ['USDT', 'sUSD'],
-    // OP ecosystem
+    ['USDC', 'FRAX'], ['USDC.e', 'FRAX'], ['DAI', 'FRAX'],
+    // OP ecosystem - expanded
     ['OP', 'WETH'], ['OP', 'USDC'], ['OP', 'USDC.e'], ['OP', 'USDT'],
-    ['VELO', 'WETH'], ['VELO', 'USDC'], ['VELO', 'OP'],
-    // BTC
-    ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'],
-    // DeFi
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['SNX', 'WETH'], ['SNX', 'USDC'],
-    ['AAVE', 'WETH'], ['CRV', 'WETH'], ['PERP', 'WETH'], ['PERP', 'USDC'],
-    ['LDO', 'WETH'], ['LDO', 'USDC'],
-    // LSDs
-    ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'],
-    // Synths
-    ['sUSD', 'DAI'], ['sUSD', 'FRAX'],
+    ['OP', 'DAI'], ['OP', 'sUSD'],
+    ['VELO', 'WETH'], ['VELO', 'USDC'], ['VELO', 'USDC.e'], ['VELO', 'OP'],
+    ['VELO', 'DAI'],
+    // BTC - expanded
+    ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'USDC.e'],
+    // DeFi - expanded
+    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDC.e'], ['LINK', 'OP'],
+    ['SNX', 'WETH'], ['SNX', 'USDC'], ['SNX', 'USDC.e'], ['SNX', 'OP'],
+    ['AAVE', 'WETH'], ['AAVE', 'USDC'], ['AAVE', 'OP'],
+    ['CRV', 'WETH'], ['CRV', 'USDC'], ['CRV', 'OP'],
+    ['PERP', 'WETH'], ['PERP', 'USDC'], ['PERP', 'OP'], ['PERP', 'DAI'],
+    ['LDO', 'WETH'], ['LDO', 'USDC'], ['LDO', 'OP'],
+    // LSDs - expanded
+    ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
+    ['wstETH', 'USDC.e'], ['rETH', 'USDC.e'],
+    // Synths - expanded
+    ['sUSD', 'DAI'], ['sUSD', 'FRAX'], ['sUSD', 'USDC'], ['sUSD', 'USDC.e'],
     // Cross pairs
-    ['OP', 'VELO'], ['SNX', 'OP'],
+    ['OP', 'VELO'], ['SNX', 'OP'], ['OP', 'LDO'],
+    ['SNX', 'VELO'], ['AAVE', 'CRV'],
   ],
   base: [
-    // Core pairs
+    // Core pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDbC'], ['WETH', 'DAI'],
     ['USDC', 'USDbC'], ['USDC', 'DAI'], ['USDbC', 'DAI'],
-    // LSDs
-    ['cbETH', 'WETH'], ['cbETH', 'USDC'], ['wstETH', 'WETH'], ['rETH', 'WETH'],
-    ['wstETH', 'USDC'], ['rETH', 'USDC'], ['cbETH', 'wstETH'],
-    // Base ecosystem
-    ['AERO', 'WETH'], ['AERO', 'USDC'], ['AERO', 'USDbC'],
-    ['BRETT', 'WETH'], ['BRETT', 'USDC'], ['DEGEN', 'WETH'], ['DEGEN', 'USDC'],
-    ['TOSHI', 'WETH'], ['TOSHI', 'USDC'], ['WELL', 'WETH'], ['WELL', 'USDC'],
-    // DeFi
+    ['USDC', 'FRAX'], ['USDbC', 'FRAX'],
+    // LSDs - expanded
+    ['cbETH', 'WETH'], ['cbETH', 'USDC'], ['cbETH', 'USDbC'],
+    ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
+    ['wstETH', 'USDbC'], ['rETH', 'USDbC'], ['cbETH', 'wstETH'],
+    // Base ecosystem - expanded
+    ['AERO', 'WETH'], ['AERO', 'USDC'], ['AERO', 'USDbC'], ['AERO', 'DAI'],
+    ['BRETT', 'WETH'], ['BRETT', 'USDC'], ['BRETT', 'USDbC'],
+    ['DEGEN', 'WETH'], ['DEGEN', 'USDC'], ['DEGEN', 'USDbC'],
+    ['TOSHI', 'WETH'], ['TOSHI', 'USDC'], ['TOSHI', 'USDbC'],
+    ['WELL', 'WETH'], ['WELL', 'USDC'], ['WELL', 'USDbC'],
+    // DeFi - expanded
     ['COMP', 'WETH'], ['SNX', 'WETH'], ['COMP', 'USDC'], ['SNX', 'USDC'],
+    ['COMP', 'USDbC'], ['SNX', 'USDbC'],
+    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDbC'],
+    ['UNI', 'WETH'], ['UNI', 'USDC'],
+    // More Base ecosystem tokens
+    ['MOG', 'WETH'], ['MOG', 'USDC'],
+    ['BASED', 'WETH'], ['BASED', 'USDC'],
+    ['STONKS', 'WETH'], ['STONKS', 'USDC'],
     // Cross pairs
     ['AERO', 'cbETH'], ['BRETT', 'DEGEN'],
+    ['AERO', 'wstETH'], ['AERO', 'rETH'],
+    ['cbETH', 'wstETH'], ['cbETH', 'rETH'],
   ],
   avalanche: [
-    // AVAX pairs
+    // AVAX pairs - expanded
     ['WAVAX', 'USDC'], ['WAVAX', 'USDC.e'], ['WAVAX', 'USDT'], ['WAVAX', 'USDT.e'],
     ['WAVAX', 'DAI'], ['WAVAX', 'WETH'], ['WAVAX', 'WETH.e'],
-    // Stable pairs
+    ['WAVAX', 'WBTC'], ['WAVAX', 'WBTC.e'], ['WAVAX', 'LINK'],
+    ['WAVAX', 'AAVE'], ['WAVAX', 'JOE'], ['WAVAX', 'GMX'],
+    // Stable pairs - expanded
     ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT.e'], ['USDC', 'USDC.e'],
     ['USDT', 'USDT.e'], ['USDT', 'DAI'], ['DAI', 'DAI.e'],
-    // BTC pairs
+    ['USDC', 'FRAX'], ['USDC.e', 'FRAX'],
+    // BTC pairs - expanded
     ['WBTC', 'WAVAX'], ['WBTC', 'USDC'], ['WBTC.e', 'WAVAX'], ['WBTC', 'WBTC.e'],
-    // ETH pairs
+    ['WBTC', 'WETH'], ['WBTC', 'WETH.e'],
+    ['WBTC.e', 'WAVAX'], ['WBTC.e', 'USDC.e'],
+    // ETH pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH.e', 'USDC.e'],
-    // DEX tokens
-    ['JOE', 'WAVAX'], ['JOE', 'USDC'], ['PNG', 'WAVAX'], ['PNG', 'USDC'],
-    ['QI', 'WAVAX'], ['QI', 'USDC'],
-    // DeFi
-    ['LINK', 'WAVAX'], ['LINK', 'USDC'], ['AAVE', 'WAVAX'], ['AAVE', 'USDC'],
-    ['GMX', 'WAVAX'], ['GMX', 'USDC'], ['STG', 'WAVAX'], ['STG', 'USDC'],
-    // LSDs
-    ['sAVAX', 'WAVAX'], ['sAVAX', 'USDC'],
+    ['WETH', 'WAVAX'], ['WETH.e', 'WAVAX'],
+    // DEX tokens - expanded
+    ['JOE', 'WAVAX'], ['JOE', 'USDC'], ['JOE', 'USDC.e'], ['JOE', 'USDT'],
+    ['JOE', 'WETH'], ['JOE', 'DAI'],
+    ['PNG', 'WAVAX'], ['PNG', 'USDC'], ['PNG', 'USDC.e'], ['PNG', 'WETH'],
+    ['QI', 'WAVAX'], ['QI', 'USDC'], ['QI', 'USDC.e'],
+    // DeFi - expanded
+    ['LINK', 'WAVAX'], ['LINK', 'USDC'], ['LINK', 'USDC.e'], ['LINK', 'WETH'],
+    ['AAVE', 'WAVAX'], ['AAVE', 'USDC'], ['AAVE', 'USDC.e'], ['AAVE', 'WETH'],
+    ['GMX', 'WAVAX'], ['GMX', 'USDC'], ['GMX', 'USDC.e'], ['GMX', 'WETH'],
+    ['STG', 'WAVAX'], ['STG', 'USDC'], ['STG', 'USDC.e'],
+    // LSDs - expanded
+    ['sAVAX', 'WAVAX'], ['sAVAX', 'USDC'], ['sAVAX', 'USDC.e'],
+    ['sAVAX', 'WETH'], ['sAVAX', 'WETH.e'],
+    // More tokens
+    ['YIELD', 'WAVAX'], ['YIELD', 'USDC'],
+    ['PNG', 'JOE'], ['QI', 'JOE'],
     // Cross pairs
     ['JOE', 'PNG'], ['JOE', 'GMX'],
+    ['JOE', 'AAVE'], ['PNG', 'GMX'],
   ],
 };
 
-// Scanner optimization settings
+// Scanner optimization settings - Made more lenient to find more opportunities
 export const SCANNER_CONFIG = {
   // Parallel scanning settings
   maxConcurrentNetworks: 7,
-  maxConcurrentPairs: 15, // Increased for more coverage
+  maxConcurrentPairs: 20, // Increased for more coverage
   
   // Timing settings
-  scanIntervalMs: 500, // Faster scanning
-  rpcTimeoutMs: 2500,
-  maxRetries: 3,
+  scanIntervalMs: 300, // Faster scanning
+  rpcTimeoutMs: 3000,
+  maxRetries: 2,
   
-  // Profit thresholds (minimum to display)
-  minProfitPercent: 0.03, // Lower threshold to catch more opportunities
-  minProfitUsd: 3,
-  minNetProfitUsd: 1,
+  // Profit thresholds (minimum to display) - LOWERED to find more opportunities
+  minProfitPercent: 0.01, // Very low threshold to catch micro-arbitrage
+  minProfitUsd: 1,
+  minNetProfitUsd: 0.5,
   
-  // AUTO-EXECUTION THRESHOLDS
+  // AUTO-EXECUTION THRESHOLDS - LOWERED for more trades
   autoExecuteEnabled: true,
-  autoExecuteMinProfitPercent: 1.5, // Lowered for more trades
-  autoExecuteMinConfidence: 75,
-  autoExecuteMinNetProfitUsd: 25, // Lowered for more trades
-  autoExecuteMaxSlippage: 1.5,
+  autoExecuteMinProfitPercent: 0.5, // Much lowered for more trades
+  autoExecuteMinConfidence: 50, // Lowered
+  autoExecuteMinNetProfitUsd: 5, // Much lowered for more trades
+  autoExecuteMaxSlippage: 2.0,
   
-  // Confidence thresholds
-  minConfidence: 60, // Lowered to show more opportunities
-  highConfidenceThreshold: 85,
+  // Confidence thresholds - LOWERED to show more opportunities
+  minConfidence: 30, // Much lowered to show more opportunities
+  highConfidenceThreshold: 70,
   
   // Slippage settings
   defaultSlippage: 0.5,
   maxSlippage: 3.0,
   
   // Trade size settings
-  defaultTradeAmountUsd: 5000, // Smaller trades for better execution
-  maxTradeAmountUsd: 50000,
-  minLiquidityUsd: 25000, // Lower liquidity requirement
+  defaultTradeAmountUsd: 3000, // Smaller trades for better execution
+  maxTradeAmountUsd: 30000,
+  minLiquidityUsd: 10000, // Lowered liquidity requirement
   
   // MEV protection
   useSubmarineTransactions: true,
