@@ -554,8 +554,4 @@ export function useArbitrageScanner() {
     lastScanTime,
     scanError,
     apiStatus,
-    getCompletedOpportunities,
-    getExecutingOpportunities,
-  };
-}
-
+    getCompletedOpportunities,3
