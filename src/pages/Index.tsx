@@ -83,12 +83,16 @@ const Index = () => {
 
   // Start/stop scanner functions
   const handleStartScanning = useCallback(async () => {
-    // Use on-chain scanner for real blockchain data
+    // Start the REAL scanner that calls Supabase edge functions
+    await realStartScanning();
+    
+    // Also start on-chain and mock scanners for additional coverage
     startOnChainScan(config.networks as Network[]);
     startScanner();
-  }, [startOnChainScan, startScanner, config.networks]);
+  }, [realStartScanning, startOnChainScan, startScanner, config.networks]);
 
   const handleStopScanning = useCallback(() => {
+    // Stop ALL scanners including the real one
     realStopScanning();
     stopOnChainScan();
     stopScanner();
