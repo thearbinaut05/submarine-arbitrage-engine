@@ -524,14 +524,41 @@ export class AgenticArbitrageScanner {
 
   /**
    * Execute an arbitrage opportunity with gasless transaction
+   * Requires deployed contracts and proper configuration
    */
   async executeOpportunity(opportunity: AgentOpportunity): Promise<ExecutionResult> {
     if (!this.walletAddress || !this.signer) {
-      return { success: false, error: 'Wallet not connected' };
+      return { success: false, error: 'Wallet not connected. Please connect your wallet to execute transactions.' };
     }
 
     if (this.isExecuting) {
       return { success: false, error: 'Already executing another transaction' };
+    }
+
+    // Verify contracts are properly configured
+    const FLASH_ARB_ADDRESS = import.meta.env.VITE_FLASH_ARB_ADDRESS;
+    const GASLESS_RELAYER_ADDRESS = import.meta.env.VITE_GASLESS_RELAYER_ADDRESS;
+
+    if (!FLASH_ARB_ADDRESS || FLASH_ARB_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      return { 
+        success: false, 
+        error: 'Flash Arb contract not deployed. Please deploy contracts and set VITE_FLASH_ARB_ADDRESS environment variable.' 
+      };
+    }
+
+    if (!GASLESS_RELAYER_ADDRESS || GASLESS_RELAYER_ADDRESS === '0x0000000000000000000000000000000000000000') {
+      return { 
+        success: false, 
+        error: 'Gasless relayer contract not deployed. Please deploy contracts and set VITE_GASLESS_RELAYER_ADDRESS environment variable.' 
+      };
+    }
+
+    // Check if Gelato API key is configured for gasless execution
+    if (!this.gelatoRelay['apiKey']) {
+      return { 
+        success: false, 
+        error: 'Gelato API key not configured. Please set VITE_GELATO_API_KEY environment variable for gasless transactions.' 
+      };
     }
 
     this.isExecuting = true;
@@ -543,15 +570,6 @@ export class AgenticArbitrageScanner {
     this.emit({ type: 'execution', data: { opportunity, status: 'pending' } });
 
     try {
-      // Get contract addresses from environment
-      const FLASH_ARB_ADDRESS = import.meta.env.VITE_FLASH_ARB_ADDRESS;
-      const GASLESS_RELAYER_ADDRESS = import.meta.env.VITE_GASLESS_RELAYER_ADDRESS;
-
-      if (!FLASH_ARB_ADDRESS || FLASH_ARB_ADDRESS === '0x0000000000000000000000000000000000000000') {
-        // Simulation mode
-        return await this.simulateExecution(opportunity);
-      }
-
       // Prepare transaction data
       const amountIn = this.calculateTradeAmount(opportunity);
       
@@ -587,7 +605,7 @@ export class AgenticArbitrageScanner {
       // Create deadline
       const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes
 
-      // Check if we should use submarine transaction (MEV protection)
+      // Execute with gasless transaction
       let result: ExecutionResult;
       
       if (opportunity.isSubmarine && this.config.autoExecute) {
@@ -734,25 +752,6 @@ export class AgenticArbitrageScanner {
         error: error instanceof Error ? error.message : 'Submarine execution failed',
       };
     }
-  }
-
-  /**
-   * Simulate execution for testing
-   */
-  private async simulateExecution(opportunity: AgentOpportunity): Promise<ExecutionResult> {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        const success = Math.random() > 0.1; // 90% success rate
-        
-        resolve({
-          success,
-          txHash: success ? `0x${Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('')}` : undefined,
-          profitUsd: success ? opportunity.netProfit : 0,
-          isSubmarine: opportunity.isSubmarine,
-          error: success ? undefined : 'Simulation: execution failed',
-        });
-      }, 2000 + Math.random() * 2000);
-    });
   }
 
   /**

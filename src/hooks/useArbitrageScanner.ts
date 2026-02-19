@@ -15,71 +15,14 @@ const NETWORK_MAP: Record<string, Network> = {
   avalanche: 'avalanche',
 };
 
-// Default thresholds - using backend edge function (no rate limits, no CORS!)
+// Default thresholds - using backend edge function
 const DEFAULT_MIN_PROFIT_PERCENT = 0.01;
 const DEFAULT_MIN_PROFIT_USD = 1;
-const DEFAULT_SCAN_INTERVAL = 15000; // 15 seconds - gives time for requests to complete
+const DEFAULT_SCAN_INTERVAL = 10000;
 
-// Demo opportunities for when no real opportunities are found
-const generateDemoOpportunities = (): ArbitrageOpportunity[] => {
-  const networks: Network[] = ['ethereum', 'arbitrum', 'polygon', 'bsc', 'optimism', 'base', 'avalanche'];
-  const dexPairs = [
-    { source: 'Uniswap V3', target: 'Sushiswap' },
-    { source: 'Uniswap V2', target: 'Curve' },
-    { source: 'Sushiswap', target: 'Uniswap V3' },
-    { source: 'Pancakeswap', target: 'Biswap' },
-    { source: 'QuickSwap', target: 'Sushiswap' },
-    { source: 'Camelot', target: 'Sushiswap' },
-    { source: 'Aerodrome', target: 'Uniswap V3' },
-    { source: 'TraderJoe', target: 'Pangolin' },
-  ];
-  const tokenPairs = [
-    { in: 'WETH', out: 'USDC' },
-    { in: 'WBTC', out: 'USDC' },
-    { in: 'USDC', out: 'USDT' },
-    { in: 'WETH', out: 'DAI' },
-    { in: 'ARB', out: 'WETH' },
-    { in: 'MATIC', out: 'USDC' },
-    { in: 'OP', out: 'WETH' },
-    { in: 'AVAX', out: 'USDC' },
-  ];
-
-  const demoOpps: ArbitrageOpportunity[] = [];
-  const now = Date.now();
-  
-  // Generate 5-10 demo opportunities
-  const count = 5 + Math.floor(Math.random() * 6);
-  
-  for (let i = 0; i < count; i++) {
-    const network = networks[Math.floor(Math.random() * networks.length)];
-    const dexPair = dexPairs[Math.floor(Math.random() * dexPairs.length)];
-    const tokenPair = tokenPairs[Math.floor(Math.random() * tokenPairs.length)];
-    
-    const profitPercent = 0.05 + Math.random() * 2; // 0.05% to 2.05%
-    const profitUsd = 5 + Math.random() * 100;
-    const confidence = 50 + Math.floor(Math.random() * 45);
-    
-    demoOpps.push({
-      id: `demo-${network}-${tokenPair.in}-${tokenPair.out}-${now}-${i}`,
-      type: 'flash_loan',
-      sourceNetwork: network,
-      sourceDex: dexPair.source,
-      targetDex: dexPair.target,
-      tokenIn: tokenPair.in,
-      tokenOut: tokenPair.out,
-      profitPercent,
-      profitUsd,
-      gasEstimate: `$${(5 + Math.random() * 20).toFixed(2)}`,
-      netProfit: profitUsd - (5 + Math.random() * 10),
-      confidence,
-      timestamp: now - Math.floor(Math.random() * 60000),
-      route: [tokenPair.in, tokenPair.out],
-      status: 'pending',
-      isSubmarine: true,
-    });
-  }
-  
-  return demoOpps;
+// Check if Supabase is configured
+const isSupabaseConfigured = (): boolean => {
+  return !!(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL !== 'undefined');
 };
 
 interface BackendOpportunity {
@@ -126,6 +69,7 @@ export function useArbitrageScanner() {
     totalProfit: 0,
     successRate: 0,
     avgProfit: 0,
+    transactionsExecuted: 0,
   });
   const [isScanning, setIsScanning] = useState(false);
   const [lastScanTime, setLastScanTime] = useState<number | null>(null);
@@ -135,11 +79,13 @@ export function useArbitrageScanner() {
     lastCallTime: 0,
   });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   
+  // Store full backend opportunity data for execution
+  const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
+  
   // PERSISTENCE: Store executing and completed opportunities separately
-  // These will NOT be removed when new opportunities are scanned
   const executingOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
   const completedOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
 
@@ -166,9 +112,16 @@ export function useArbitrageScanner() {
     };
   };
 
-  // Scan using backend edge function (NO CORS issues, NO rate limits!)
+  // Scan using backend edge function
   const scanWithBackend = useCallback(async () => {
-    if (!config.networks.length || !SUPABASE_URL) {
+    // Require Supabase configuration for real scanning
+    if (!isSupabaseConfigured()) {
+      setScanError('Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY environment variables.');
+      setIsScanning(false);
+      return;
+    }
+
+    if (!config.networks.length) {
       setScanError('Configuration missing');
       return;
     }
@@ -213,6 +166,12 @@ export function useArbitrageScanner() {
 
       if (result.opportunities && Array.isArray(result.opportunities)) {
         const backendOpps = result.opportunities as BackendOpportunity[];
+        
+        // Store full backend opportunities for execution
+        for (const opp of backendOpps) {
+          backendOpportunitiesRef.current.set(opp.id, opp);
+        }
+        
         const convertedOpps = backendOpps.map(convertToOpportunity);
 
         // Sort by net profit and merge with existing
@@ -225,7 +184,6 @@ export function useArbitrageScanner() {
           const merged = [...convertedOpps, ...executingOpps];
           for (const old of prev) {
             if (!merged.some(o => o.id === old.id) && old.status !== 'pending') {
-              // Keep completed/failed opportunities
               merged.push(old);
             }
           }
@@ -246,37 +204,25 @@ export function useArbitrageScanner() {
           }
         }
       } else {
-        // No real opportunities found - generate demo opportunities for UI demonstration
-        // This helps show the scanner is working even when markets are calm
-        const demoOpps = generateDemoOpportunities();
-        
-        // Get executing opportunities to preserve
+        // No opportunities found - clear list but show empty state (not demo)
         const executingOpps = Array.from(executingOpportunitiesRef.current.values());
-
+        
         setOpportunities(prev => {
-          // Only show demo if there are no real opportunities
-          const merged = [...demoOpps, ...executingOpps];
+          const merged = [...executingOpps];
           for (const old of prev) {
             if (!merged.some(o => o.id === old.id) && old.status !== 'pending') {
-              // Keep completed/failed opportunities
               merged.push(old);
             }
           }
           return merged.slice(0, 50);
         });
-
-        setStats(prev => ({
-          ...prev,
-          totalScanned: prev.totalScanned + demoOpps.length,
-        }));
-
-        console.log('No real opportunities found, showing demo opportunities for demonstration');
+        
+        console.log('No arbitrage opportunities found at this time. Markets may be too efficient.');
       }
 
       setLastScanTime(Date.now());
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
-        // Request was aborted, ignore
         return;
       }
       console.error('Backend scan error:', error);
@@ -288,11 +234,8 @@ export function useArbitrageScanner() {
 
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
-
-    // Initial scan
     scanWithBackend();
 
-    // Continuous scanning
     intervalRef.current = setInterval(() => {
       scanWithBackend();
     }, config.scanInterval);
@@ -314,11 +257,28 @@ export function useArbitrageScanner() {
     setConfig(prev => ({ ...prev, autoExecute: !prev.autoExecute }));
   }, []);
 
-  const executeOpportunity = useCallback((id: string) => {
-    // Get the opportunity from state or refs
+  // Real execution via backend edge function
+  const executeOpportunity = useCallback(async (id: string) => {
     const executingOpp = opportunities.find(o => o.id === id);
     if (!executingOpp) return;
     
+    if (!isSupabaseConfigured()) {
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, status: 'failed' as const } : opp
+        )
+      );
+      setScanError('Cannot execute: Supabase not configured');
+      return;
+    }
+
+    // Get the full backend opportunity data
+    const backendOpp = backendOpportunitiesRef.current.get(id);
+    if (!backendOpp) {
+      setScanError('Opportunity data not found. Please re-scan.');
+      return;
+    }
+
     // Store in executing ref for persistence
     executingOpportunitiesRef.current.set(id, { ...executingOpp, status: 'executing' });
 
@@ -328,63 +288,247 @@ export function useArbitrageScanner() {
       )
     );
 
-    setTimeout(() => {
-      const success = Math.random() > 0.2;
-      
-      if (success) {
-        // Move to completed
-        const completedOpp: ArbitrageOpportunity = {
-          ...executingOpp,
-          status: 'completed',
-          txHash: `simulated-${Date.now()}`,
-          isRealExecution: false,
-          executedAt: Date.now(),
-        };
-        executingOpportunitiesRef.current.delete(id);
-        completedOpportunitiesRef.current.set(id, completedOpp);
-        
-        setStats(prev => ({
-          ...prev,
-          totalProfit: prev.totalProfit + (executingOpp.netProfit || 0),
-          successRate: ((prev.successRate * prev.totalScanned + 1) / (prev.totalScanned + 1)),
-        }));
-      } else {
-        // Move to failed
-        const failedOpp: ArbitrageOpportunity = {
-          ...executingOpp,
-          status: 'failed',
-        };
-        executingOpportunitiesRef.current.delete(id);
-        completedOpportunitiesRef.current.set(id, failedOpp);
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}` 
+        },
+        body: JSON.stringify({ 
+          network: executingOpp.sourceNetwork,
+          tokenIn: executingOpp.tokenIn,
+          tokenOut: executingOpp.tokenOut,
+          amountIn: backendOpp.amountIn,
+          sourceDex: executingOpp.sourceDex,
+          targetDex: executingOpp.targetDex,
+          profitRecipient: backendOpp.executorAddress,
+          minProfit: executingOpp.netProfit * 0.8,
+          isSubmarine: true,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Execution failed: ${response.statusText} - ${errorText}`);
       }
+
+      const result = await response.json();
+
+      // Update with task ID
+      const updatedOpp: ArbitrageOpportunity = {
+        ...executingOpp,
+        txHash: result.taskId || result.txHash,
+      };
+      executingOpportunitiesRef.current.set(id, updatedOpp);
+
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, txHash: result.taskId || result.txHash } : opp
+        )
+      );
+
+      // Poll for transaction completion
+      if (result.taskId) {
+        pollForTransaction(id, executingOpp.sourceNetwork, result.taskId);
+      }
+
+    } catch (error) {
+      console.error('Execution error:', error);
+      
+      // Move to failed
+      executingOpportunitiesRef.current.delete(id);
+      const failedOpp: ArbitrageOpportunity = {
+        ...executingOpp,
+        status: 'failed',
+      };
+      completedOpportunitiesRef.current.set(id, failedOpp);
       
       setOpportunities(prev =>
         prev.map(opp =>
-          opp.id === id
-            ? { ...opp, status: success ? 'completed' as const : 'failed' as const }
-            : opp
+          opp.id === id ? { ...opp, status: 'failed' as const } : opp
         )
       );
-    }, 2000 + Math.random() * 3000);
+      
+      setScanError(error instanceof Error ? error.message : 'Execution failed');
+    }
   }, [opportunities]);
+
+  // Poll for transaction confirmation
+  const pollForTransaction = useCallback(async (
+    opportunityId: string,
+    network: Network,
+    taskId: string
+  ) => {
+    const pollInterval = 3000;
+    const maxAttempts = 40;
+    let attempts = 0;
+
+    const pollTimer = setInterval(async () => {
+      attempts++;
+      
+      try {
+        // Try to get transaction from Supabase
+        const { data: txData, error } = await import('@/integrations/supabase/client')
+          .then(m => m.supabase)
+          .then(s => s.from('transactions').select('*').eq('hash', taskId).single());
+
+        if (!error && txData && (txData as Record<string, unknown>).real_tx_hash && txData.status === 'confirmed') {
+          clearInterval(pollTimer);
+          
+          // Move to completed
+          const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+          executingOpportunitiesRef.current.delete(opportunityId);
+          
+          const completedOpp: ArbitrageOpportunity = {
+            ...(executingOpp || {
+              id: opportunityId,
+              type: 'flash_loan',
+              sourceNetwork: network,
+              sourceDex: 'unknown',
+              targetDex: 'unknown',
+              tokenIn: 'unknown',
+              tokenOut: 'unknown',
+              profitPercent: 0,
+              profitUsd: 0,
+              gasEstimate: '0',
+              netProfit: 0,
+              confidence: 0,
+              timestamp: Date.now(),
+              route: [],
+              status: 'completed',
+            }),
+            status: 'completed',
+            txHash: (txData as Record<string, unknown>).real_tx_hash as string,
+            isRealExecution: true,
+            executedAt: Date.now(),
+          };
+          completedOpportunitiesRef.current.set(opportunityId, completedOpp);
+          
+          setOpportunities(prev =>
+            prev.map(op =>
+              op.id === opportunityId
+                ? { ...op, status: 'completed' as const, txHash: (txData as Record<string, unknown>).real_tx_hash as string, isRealExecution: true, executedAt: Date.now() }
+                : op
+            )
+          );
+          
+          setStats(prev => ({
+            ...prev,
+            totalProfit: prev.totalProfit + (executingOpp?.netProfit || 0),
+            transactionsExecuted: prev.transactionsExecuted + 1,
+          }));
+          return;
+        }
+
+        // Try direct RPC lookup for verification
+        if (attempts >= 5) {
+          const rpcUrl = getRpcUrl(network);
+          if (rpcUrl) {
+            const { ethers } = await import('ethers');
+            try {
+              const provider = new ethers.JsonRpcProvider(rpcUrl);
+              const txReceipt = await provider.getTransactionReceipt(taskId);
+              if (txReceipt && txReceipt.blockNumber) {
+                clearInterval(pollTimer);
+                
+                const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+                executingOpportunitiesRef.current.delete(opportunityId);
+                
+                const completedOpp: ArbitrageOpportunity = {
+                  ...(executingOpp || {
+                    id: opportunityId,
+                    type: 'flash_loan',
+                    sourceNetwork: network,
+                    sourceDex: 'unknown',
+                    targetDex: 'unknown',
+                    tokenIn: 'unknown',
+                    tokenOut: 'unknown',
+                    profitPercent: 0,
+                    profitUsd: 0,
+                    gasEstimate: '0',
+                    netProfit: 0,
+                    confidence: 0,
+                    timestamp: Date.now(),
+                    route: [],
+                    status: 'completed',
+                  }),
+                  status: 'completed',
+                  txHash: taskId,
+                  isRealExecution: true,
+                  executedAt: Date.now(),
+                };
+                completedOpportunitiesRef.current.set(opportunityId, completedOpp);
+                
+                setOpportunities(prev =>
+                  prev.map(op =>
+                    op.id === opportunityId
+                      ? { ...op, status: 'completed' as const, txHash: taskId, isRealExecution: true, executedAt: Date.now() }
+                      : op
+                );
+                
+                setStats(prev => ({
+                  ...prev,
+                  totalProfit: prev.totalProfit + (executingOpp?.netProfit || 0),
+                  transactionsExecuted: prev.transactionsExecuted + 1,
+                }));
+                return;
+              }
+            } catch {}
+          }
+        }
+
+        if (attempts >= maxAttempts) {
+          clearInterval(pollTimer);
+          
+          const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+          executingOpportunitiesRef.current.delete(opportunityId);
+          
+          if (executingOpp) {
+            const failedOpp: ArbitrageOpportunity = {
+              ...executingOpp,
+              status: 'failed',
+            };
+            completedOpportunitiesRef.current.set(opportunityId, failedOpp);
+          }
+          
+          setOpportunities(prev =>
+            prev.map(op => op.id === opportunityId ? { ...op, status: 'failed' as const } : op)
+          );
+        }
+      } catch (error) {
+        console.error('Error polling for transaction:', error);
+      }
+    }, pollInterval);
+  }, []);
+
+  const getRpcUrl = (network: Network): string | null => {
+    const RPC_URLS: Record<Network, string> = {
+      ethereum: 'https://eth.llamarpc.com',
+      arbitrum: 'https://arb1.arbitrum.io/rpc',
+      polygon: 'https://polygon-rpc.com',
+      bsc: 'https://bsc-dataseed.binance.org',
+      optimism: 'https://optimism.drpc.org',
+      base: 'https://base.drpc.org',
+      avalanche: 'https://api.avax.network/ext/bc/C/rpc',
+    };
+    return RPC_URLS[network] || null;
+  };
 
   const updateConfig = useCallback((updates: Partial<ScannerConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
   }, []);
 
-  // Get all completed opportunities (for history display)
   const getCompletedOpportunities = useCallback((): ArbitrageOpportunity[] => {
     return Array.from(completedOpportunitiesRef.current.values()).sort(
       (a, b) => (b.executedAt || 0) - (a.executedAt || 0)
     );
   }, []);
 
-  // Get all executing opportunities
   const getExecutingOpportunities = useCallback((): ArbitrageOpportunity[] => {
     return Array.from(executingOpportunitiesRef.current.values());
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) {
@@ -413,3 +557,4 @@ export function useArbitrageScanner() {
     getExecutingOpportunities,
   };
 }
+

@@ -182,15 +182,17 @@ export class GelatoRelay {
 
   /**
    * Submit meta-transaction to Gelato relay
+   * Throws error if API key is not configured (no simulation mode)
    */
   async submitMetaTransaction(
     network: Network,
     request: MetaTransactionRequest
   ): Promise<MetaTransactionResult> {
     if (!this.apiKey) {
-      // Simulation mode - return mock response
-      console.warn('Gelato API key not configured - simulating relay');
-      return this.simulateRelay(network, request);
+      throw new Error(
+        'Gelato API key not configured. Please set VITE_GELATO_API_KEY environment variable. ' +
+        'Gasless transactions require a valid Gelato API key for real blockchain execution.'
+      );
     }
 
     const chainId = this.getChainId(network);
@@ -229,6 +231,7 @@ export class GelatoRelay {
 
   /**
    * Execute sponsored call (simplified version)
+   * Throws error if API key is not configured (no simulation mode)
    */
   async sponsoredCall(
     network: Network,
@@ -237,15 +240,10 @@ export class GelatoRelay {
     isPrivate: boolean = true
   ): Promise<MetaTransactionResult> {
     if (!this.apiKey) {
-      console.warn('Gelato API key not configured - simulating call');
-      return this.simulateRelay(network, {
-        from: '0x0000000000000000000000000000000000000000',
-        to: target,
-        value: '0',
-        data,
-        deadline: Math.floor(Date.now() / 1000) + 300,
-        signature: '0x',
-      });
+      throw new Error(
+        'Gelato API key not configured. Please set VITE_GELATO_API_KEY environment variable. ' +
+        'Gasless transactions require a valid Gelato API key for real blockchain execution.'
+      );
     }
 
     const chainId = this.getChainId(network);
@@ -281,6 +279,7 @@ export class GelatoRelay {
 
   /**
    * Get task status from Gelato
+   * Requires API key for real status - throws error if not configured
    */
   async getTaskStatus(taskId: string): Promise<{
     taskId: string;
@@ -289,12 +288,10 @@ export class GelatoRelay {
     blockNumber?: number;
   }> {
     if (!this.apiKey) {
-      return {
-        taskId,
-        taskState: Math.random() > 0.1 ? 'ExecSuccess' : 'ExecReverted',
-        transactionHash: `0x${Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`,
-        blockNumber: Math.floor(Math.random() * 1000000) + 18000000,
-      };
+      throw new Error(
+        'Gelato API key required to check task status. ' +
+        'Please configure VITE_GELATO_API_KEY environment variable.'
+      );
     }
 
     const response = await fetch(`${GELATO_API_URL}/tasks/${taskId}`, {
@@ -341,23 +338,6 @@ export class GelatoRelay {
     }
 
     return { success: false, error: 'Timeout waiting for transaction' };
-  }
-
-  /**
-   * Simulate relay response for testing
-   */
-  private simulateRelay(
-    network: Network,
-    _request: MetaTransactionRequest
-  ): MetaTransactionResult {
-    const mockTaskId = `0x${Array(64).fill(0).map(() => Math.floor(Math.random() * 16).toString(16)).join('')}`;
-    
-    return {
-      taskId: mockTaskId,
-      relayer: this.getRelayerAddress(network),
-      explorerUrl: this.getExplorerUrl(network, mockTaskId),
-      isPrivate: true,
-    };
   }
 
   /**

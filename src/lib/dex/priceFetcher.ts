@@ -633,8 +633,10 @@ class OnChainPriceFetcher {
     minProfitUsd: number = 10
   ): Promise<ArbitrageOpportunity[]> {
     const opportunities: ArbitrageOpportunity[] = [];
-    const GAS_COST_USD = 15; // Average gas cost
-    const TRADE_AMOUNT = 10000; // $10k trade
+    
+    // Get dynamic gas cost from network
+    const gasCostUsd = await this.estimateGasCost(network);
+    const TRADE_AMOUNT = 10000; // Base amount, adjusted by liquidity
 
     const tokenPairs = [
       ['WETH', 'USDC'],
@@ -678,7 +680,7 @@ class OnChainPriceFetcher {
             // Calculate profits
             const grossProfitUsd = TRADE_AMOUNT * (spreadPercent / 100);
             const dexFees = TRADE_AMOUNT * 0.006; // 0.3% * 2 DEXs
-            const netProfit = grossProfitUsd - dexFees - GAS_COST_USD;
+            const netProfit = grossProfitUsd - dexFees - gasCostUsd;
 
             if (
               spreadPercent >= minProfitPercent &&
@@ -706,7 +708,7 @@ class OnChainPriceFetcher {
                 sellPrice,
                 spreadPercent,
                 profitUsd: grossProfitUsd,
-                gasEstimate: GAS_COST_USD,
+                gasEstimate: gasCostUsd,
                 netProfit,
                 liquidity: Math.min(buyDex.liquidity, sellDex.liquidity),
                 confidence,
@@ -721,6 +723,42 @@ class OnChainPriceFetcher {
 
     opportunities.sort((a, b) => b.netProfit - a.netProfit);
     return opportunities.slice(0, 10);
+  }
+
+  /**
+   * Estimate dynamic gas cost from network
+   */
+  private async estimateGasCost(network: Network): Promise<number> {
+    const rpcs = NETWORK_CONFIGS[network]?.rpcs;
+    if (!rpcs || rpcs.length === 0) return 15;
+
+    for (const rpcUrl of rpcs) {
+      try {
+        const response = await fetch(rpcUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'eth_gasPrice',
+            params: [],
+          }),
+        });
+
+        const data = await response.json();
+        if (data.result) {
+          const gasPriceGwei = parseInt(data.result, 16) / 1e9;
+          const ethPrice = await this.getEthPrice(network);
+          const gasUnits = 300000;
+          const gasCostEth = (gasUnits * gasPriceGwei) / 1e9;
+          return Math.round(gasCostEth * ethPrice * 100) / 100;
+        }
+      } catch {
+        continue;
+      }
+    }
+    
+    return 15;
   }
 
   /**

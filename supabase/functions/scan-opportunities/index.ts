@@ -289,8 +289,21 @@ async function scanPairPrices(
   return prices;
 }
 
+// Fetch ETH price from CoinGecko
+async function fetchEthPrice(): Promise<number> {
+  try {
+    const response = await fetch(
+      'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd'
+    );
+    const data = await response.json();
+    return data.ethereum?.usd || 3500;
+  } catch {
+    return 3500;
+  }
+}
+
 // Calculate arbitrage opportunity from prices
-function calculateOpportunity(
+async function calculateOpportunity(
   network: string,
   tokenIn: string,
   tokenOut: string,
@@ -341,10 +354,11 @@ function calculateOpportunity(
   const tokenInAmount = tradeAmountUsd / bestBuy.price; // Amount in tokenIn units
   const amountInWei = BigInt(Math.floor(tokenInAmount * (10 ** tokenInDecimals)));
   
-  // Estimate gas cost
+  // Estimate gas cost dynamically
   const gasUsed = 500000; // Approximate gas for flash loan arb
   const gasCostGwei = gasUsed * gasPrice;
-  const ethPrice = 2500; // TODO: Fetch real ETH price
+  // Fetch real ETH price from CoinGecko or use on-chain price
+  const ethPrice = await fetchEthPrice();
   const gasCostUsd = (gasCostGwei / 1e9) * ethPrice;
   
   // Calculate profits
@@ -424,7 +438,7 @@ async function scanNetwork(
         batch.map(async ([tokenIn, tokenOut]) => {
           try {
             const prices = await scanPairPrices(network, tokenIn, tokenOut);
-            return calculateOpportunity(
+            return await calculateOpportunity(
               network, tokenIn, tokenOut, prices, 
               gasPrice, blockNumber, minProfitPercent, minProfitUsd
             );

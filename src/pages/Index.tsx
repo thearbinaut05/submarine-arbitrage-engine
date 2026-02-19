@@ -22,6 +22,7 @@ import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
 import { useWallet, TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
 import { useArbitrageScanner } from '@/hooks/useArbitrageScanner';
+import { useOnChainScanner } from '@/hooks/useOnChainScanner';
 import { Button } from '@/components/ui/button';
 import { ScannerConfig, Network } from '@/types/defi';
 import { ethers } from 'ethers';
@@ -58,6 +59,14 @@ const Index = () => {
     executeOpportunity: realExecuteOpportunity,
   } = useRealArbitrage(wallet.address, wallet.network as Network | null, null);
 
+  // On-chain scanner - uses real blockchain data
+  const {
+    opportunities: onChainOpportunities,
+    isScanning: onChainIsScanning,
+    startScanner: startOnChainScan,
+    stopScanner: stopOnChainScan,
+  } = useOnChainScanner();
+
   // Mock scanner for UI demo (can be replaced with real scanning)
   const {
     config,
@@ -69,28 +78,24 @@ const Index = () => {
     updateConfig,
   } = useArbitrageScanner();
 
-  // Determine if scanner is active (either real or mock)
-  const isScanning = realIsScanning || config.isActive;
+  // Determine if scanner is active (either real or on-chain)
+  const isScanning = realIsScanning || onChainIsScanning || config.isActive;
 
-  // Start/stop scanner functions - use mock scanner when no wallet connected
+  // Start/stop scanner functions
   const handleStartScanning = useCallback(async () => {
-    const signer = await getSigner();
-    if (signer) {
-      // Use real scanner with signer
-      realStartScanning();
-    } else {
-      // Fallback to mock scanner for demo
-      startScanner();
-    }
-  }, [startScanner, realStartScanning, getSigner]);
+    // Use on-chain scanner for real blockchain data
+    startOnChainScan(config.networks as Network[]);
+    startScanner();
+  }, [startOnChainScan, startScanner, config.networks]);
 
   const handleStopScanning = useCallback(() => {
     realStopScanning();
+    stopOnChainScan();
     stopScanner();
-  }, [realStopScanning, stopScanner]);
+  }, [realStopScanning, stopOnChainScan, stopScanner]);
 
-  // Combined opportunities (real + mock)
-  const combinedOpportunities = [...realOpportunities];
+  // Combined opportunities (real + on-chain + mock)
+  const combinedOpportunities = [...realOpportunities, ...onChainOpportunities];
 
   // Execute opportunity handler - uses real execution when wallet is connected
   const handleExecute = useCallback(async (id: string) => {
