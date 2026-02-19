@@ -465,6 +465,7 @@ export function useArbitrageScanner() {
                     op.id === opportunityId
                       ? { ...op, status: 'completed' as const, txHash: taskId, isRealExecution: true, executedAt: Date.now() }
                       : op
+                  )
                 );
                 
                 setStats(prev => ({
