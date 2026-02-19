@@ -209,9 +209,11 @@ export function OpportunityCard({ opportunity, onExecute }: OpportunityCardProps
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-accent" />
             <div className="flex flex-col">
-              <span className="text-xs text-accent font-medium">Transaction Confirmed</span>
+              <span className="text-xs text-accent font-medium">
+                {opportunity.isRealExecution ? '✅ Real Execution Confirmed' : 'Transaction Confirmed'}
+              </span>
               <span className="text-xs text-muted-foreground">
-                {opportunity.isRealExecution ? 'Real blockchain execution' : 'Simulated execution'}
+                {opportunity.isRealExecution ? 'Verified on blockchain explorer' : 'Simulated execution'}
               </span>
             </div>
           </div>

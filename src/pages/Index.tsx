@@ -92,24 +92,28 @@ const Index = () => {
   // Combined opportunities (real + mock)
   const combinedOpportunities = [...realOpportunities];
 
-  // Execute opportunity handler
+  // Execute opportunity handler - uses real execution when wallet is connected
   const handleExecute = useCallback(async (id: string) => {
+    // Find the opportunity in real opportunities first
     const opportunity = realOpportunities.find(op => op.id === id);
-    if (opportunity) {
+    
+    if (opportunity && wallet.address) {
+      // Use REAL execution when wallet is connected
       try {
-        const signer = await getSigner();
-        if (signer) {
-          await realExecuteOpportunity(opportunity);
-        } else {
-          // Fallback to mock execution for demo
-          executeMockOpportunity(id);
-        }
+        await realExecuteOpportunity(opportunity);
       } catch (error) {
-        console.error('Execution failed:', error);
+        console.error('Real execution failed:', error);
+        // Fallback to mock if real fails
         executeMockOpportunity(id);
       }
+    } else if (opportunity) {
+      // Wallet not connected, use mock execution
+      executeMockOpportunity(id);
+    } else {
+      // Try mock execution
+      executeMockOpportunity(id);
     }
-  }, [realOpportunities, realExecuteOpportunity, executeMockOpportunity, getSigner]);
+  }, [realOpportunities, realExecuteOpportunity, executeMockOpportunity, wallet.address]);
 
   // Handle wallet connection
   const handleConnect = useCallback(async () => {

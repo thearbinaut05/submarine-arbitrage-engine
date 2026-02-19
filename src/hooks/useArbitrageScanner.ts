@@ -75,6 +75,11 @@ export function useArbitrageScanner() {
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // PERSISTENCE: Store executing and completed opportunities separately
+  // These will NOT be removed when new opportunities are scanned
+  const executingOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
+  const completedOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
 
   // Convert backend opportunity to frontend format
   const convertToOpportunity = (backendOpp: BackendOpportunity): ArbitrageOpportunity => {
@@ -151,10 +156,14 @@ export function useArbitrageScanner() {
         // Sort by net profit and merge with existing
         convertedOpps.sort((a, b) => b.netProfit - a.netProfit);
 
+        // Get executing opportunities to preserve
+        const executingOpps = Array.from(executingOpportunitiesRef.current.values());
+
         setOpportunities(prev => {
-          const merged = [...convertedOpps];
+          const merged = [...convertedOpps, ...executingOpps];
           for (const old of prev) {
-            if (!merged.some(o => o.id === old.id)) {
+            if (!merged.some(o => o.id === old.id) && old.status !== 'pending') {
+              // Keep completed/failed opportunities
               merged.push(old);
             }
           }
@@ -218,6 +227,13 @@ export function useArbitrageScanner() {
   }, []);
 
   const executeOpportunity = useCallback((id: string) => {
+    // Get the opportunity from state or refs
+    const executingOpp = opportunities.find(o => o.id === id);
+    if (!executingOpp) return;
+    
+    // Store in executing ref for persistence
+    executingOpportunitiesRef.current.set(id, { ...executingOpp, status: 'executing' });
+
     setOpportunities(prev =>
       prev.map(opp =>
         opp.id === id ? { ...opp, status: 'executing' as const } : opp
@@ -226,6 +242,34 @@ export function useArbitrageScanner() {
 
     setTimeout(() => {
       const success = Math.random() > 0.2;
+      
+      if (success) {
+        // Move to completed
+        const completedOpp: ArbitrageOpportunity = {
+          ...executingOpp,
+          status: 'completed',
+          txHash: `simulated-${Date.now()}`,
+          isRealExecution: false,
+          executedAt: Date.now(),
+        };
+        executingOpportunitiesRef.current.delete(id);
+        completedOpportunitiesRef.current.set(id, completedOpp);
+        
+        setStats(prev => ({
+          ...prev,
+          totalProfit: prev.totalProfit + (executingOpp.netProfit || 0),
+          successRate: ((prev.successRate * prev.totalScanned + 1) / (prev.totalScanned + 1)),
+        }));
+      } else {
+        // Move to failed
+        const failedOpp: ArbitrageOpportunity = {
+          ...executingOpp,
+          status: 'failed',
+        };
+        executingOpportunitiesRef.current.delete(id);
+        completedOpportunitiesRef.current.set(id, failedOpp);
+      }
+      
       setOpportunities(prev =>
         prev.map(opp =>
           opp.id === id
@@ -233,19 +277,23 @@ export function useArbitrageScanner() {
             : opp
         )
       );
-
-      if (success) {
-        setStats(prev => ({
-          ...prev,
-          totalProfit: prev.totalProfit + (opportunities.find(o => o.id === id)?.netProfit || 0),
-          successRate: ((prev.successRate * prev.totalScanned + 1) / (prev.totalScanned + 1)),
-        }));
-      }
     }, 2000 + Math.random() * 3000);
   }, [opportunities]);
 
   const updateConfig = useCallback((updates: Partial<ScannerConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  // Get all completed opportunities (for history display)
+  const getCompletedOpportunities = useCallback((): ArbitrageOpportunity[] => {
+    return Array.from(completedOpportunitiesRef.current.values()).sort(
+      (a, b) => (b.executedAt || 0) - (a.executedAt || 0)
+    );
+  }, []);
+
+  // Get all executing opportunities
+  const getExecutingOpportunities = useCallback((): ArbitrageOpportunity[] => {
+    return Array.from(executingOpportunitiesRef.current.values());
   }, []);
 
   // Cleanup on unmount
@@ -273,5 +321,7 @@ export function useArbitrageScanner() {
     lastScanTime,
     scanError,
     apiStatus,
+    getCompletedOpportunities,
+    getExecutingOpportunities,
   };
 }

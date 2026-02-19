@@ -93,6 +93,11 @@ export function useRealArbitrage(
   const abortControllerRef = useRef<AbortController | null>(null);
   // Store full backend opportunity data including amountIn for execution
   const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
+  
+  // PERSISTENCE: Store executing and completed opportunities separately
+  // These will NOT be removed when new opportunities are scanned
+  const executingOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
+  const completedOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
 
   // Convert backend opportunity to frontend format
   const convertToOpportunity = useCallback((backendOpp: BackendOpportunity): ArbitrageOpportunity => {
@@ -200,23 +205,33 @@ export function useRealArbitrage(
       // Initial scan
       const newOpportunities = await scanNetworks(allNetworks);
       
+      // Merge with executing and completed opportunities that should persist
+      const executingOpps = Array.from(executingOpportunitiesRef.current.values());
+      const completedOpps = Array.from(completedOpportunitiesRef.current.values());
+      
+      // Combine: new opportunities + executing (in progress) + completed (for history)
+      // Don't add completed to the main list to avoid clutter, but keep them tracked
+      const allOpportunities = [
+        ...newOpportunities,
+        ...executingOpps,
+      ];
+
       setState(prev => ({
         ...prev,
-        opportunities: [...newOpportunities, ...prev.opportunities.filter(o => 
-          // Keep old opportunities that aren't duplicates
-          !newOpportunities.some(n => n.tokenIn === o.tokenIn && n.tokenOut === o.tokenOut && n.sourceDex === o.sourceDex)
-        )].slice(0, 100), // Keep top 100
+        opportunities: allOpportunities.slice(0, 100),
         lastScanTime: Date.now(),
       }));
 
       // Continuous scanning every 3 seconds
       intervalRef.current = setInterval(async () => {
         const scanned = await scanNetworks(allNetworks);
+        
+        // Get current executing opportunities to preserve
+        const currentExecuting = Array.from(executingOpportunitiesRef.current.values());
+        
         setState(prev => ({
           ...prev,
-          opportunities: [...scanned, ...prev.opportunities.filter(o => 
-            !scanned.some(n => n.tokenIn === o.tokenIn && n.tokenOut === o.tokenOut && n.sourceDex === o.sourceDex)
-          )].slice(0, 100),
+          opportunities: [...scanned, ...currentExecuting].slice(0, 100),
           lastScanTime: Date.now(),
         }));
       }, 3000); // 3 second interval
@@ -264,6 +279,38 @@ export function useRealArbitrage(
         if (!error && txData && (txData as Record<string, unknown>).real_tx_hash && txData.status === 'confirmed') {
           clearInterval(pollTimer);
           pendingTxsRef.current.delete(opportunityId);
+          
+          // Get the executing opportunity and move to completed
+          const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+          const completedOpp: ArbitrageOpportunity = {
+            ...(executingOpp || {
+              id: opportunityId,
+              type: 'flash_loan',
+              sourceNetwork: net,
+              sourceDex: 'unknown',
+              targetDex: 'unknown',
+              tokenIn: 'unknown',
+              tokenOut: 'unknown',
+              profitPercent: 0,
+              profitUsd: 0,
+              gasEstimate: '0',
+              netProfit: 0,
+              confidence: 0,
+              timestamp: Date.now(),
+              route: [],
+              status: 'completed',
+            }),
+            status: 'completed',
+            txHash: (txData as Record<string, unknown>).real_tx_hash as string,
+            explorerUrl: getExplorerUrl(net, (txData as Record<string, unknown>).real_tx_hash as string),
+            isRealExecution: true,
+            executedAt: Date.now(),
+          };
+          
+          // Remove from executing, add to completed
+          executingOpportunitiesRef.current.delete(opportunityId);
+          completedOpportunitiesRef.current.set(opportunityId, completedOpp);
+          
           const explorerUrl = getExplorerUrl(net, (txData as Record<string, unknown>).real_tx_hash as string);
           
           setState(prev => ({
@@ -282,6 +329,18 @@ export function useRealArbitrage(
         if (txData && txData.status === 'failed') {
           clearInterval(pollTimer);
           pendingTxsRef.current.delete(opportunityId);
+          
+          // Move to completed with failed status
+          const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+          executingOpportunitiesRef.current.delete(opportunityId);
+          if (executingOpp) {
+            const failedOpp: ArbitrageOpportunity = {
+              ...executingOpp,
+              status: 'failed',
+            };
+            completedOpportunitiesRef.current.set(opportunityId, failedOpp);
+          }
+          
           setState(prev => ({
             ...prev,
             opportunities: prev.opportunities.map(op => op.id === opportunityId ? { ...op, status: 'failed' as const } : op),
@@ -298,6 +357,36 @@ export function useRealArbitrage(
             if (txReceipt && txReceipt.blockNumber) {
               clearInterval(pollTimer);
               pendingTxsRef.current.delete(opportunityId);
+              
+              // Move to completed
+              const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+              executingOpportunitiesRef.current.delete(opportunityId);
+              const completedOpp: ArbitrageOpportunity = {
+                ...(executingOpp || {
+                  id: opportunityId,
+                  type: 'flash_loan',
+                  sourceNetwork: net,
+                  sourceDex: 'unknown',
+                  targetDex: 'unknown',
+                  tokenIn: 'unknown',
+                  tokenOut: 'unknown',
+                  profitPercent: 0,
+                  profitUsd: 0,
+                  gasEstimate: '0',
+                  netProfit: 0,
+                  confidence: 0,
+                  timestamp: Date.now(),
+                  route: [],
+                  status: 'completed',
+                }),
+                status: 'completed',
+                txHash: taskId,
+                explorerUrl: getExplorerUrl(net, taskId),
+                isRealExecution: true,
+                executedAt: Date.now(),
+              };
+              completedOpportunitiesRef.current.set(opportunityId, completedOpp);
+              
               const explorerUrl = getExplorerUrl(net, taskId);
               setState(prev => ({
                 ...prev,
@@ -316,6 +405,18 @@ export function useRealArbitrage(
         if (attempts >= maxAttempts) {
           clearInterval(pollTimer);
           pendingTxsRef.current.delete(opportunityId);
+          
+          // Move to completed with failed status (timeout)
+          const executingOpp = executingOpportunitiesRef.current.get(opportunityId);
+          executingOpportunitiesRef.current.delete(opportunityId);
+          if (executingOpp) {
+            const failedOpp: ArbitrageOpportunity = {
+              ...executingOpp,
+              status: 'failed',
+            };
+            completedOpportunitiesRef.current.set(opportunityId, failedOpp);
+          }
+          
           setState(prev => ({
             ...prev,
             opportunities: prev.opportunities.map(op => op.id === opportunityId ? { ...op, status: 'failed' as const } : op),
@@ -344,6 +445,17 @@ export function useRealArbitrage(
     }
 
     const targetNetwork = opportunity.sourceNetwork;
+
+    // Create executing opportunity with all necessary data
+    const executingOpp: ArbitrageOpportunity = {
+      ...opportunity,
+      status: 'executing',
+      isSubmarine: true,
+      submarinePhase: 'committed',
+    };
+
+    // Store in executing ref so it persists across scans
+    executingOpportunitiesRef.current.set(opportunity.id, executingOpp);
 
     setState(prev => ({
       ...prev,
@@ -389,6 +501,14 @@ export function useRealArbitrage(
 
       const result = await response.json();
 
+      // Update executing opportunity with revealed phase
+      const revealedOpp: ArbitrageOpportunity = {
+        ...executingOpp,
+        submarinePhase: 'revealed',
+        txHash: result.taskId,
+      };
+      executingOpportunitiesRef.current.set(opportunity.id, revealedOpp);
+
       setState(prev => ({
         ...prev,
         opportunities: prev.opportunities.map(op => 
@@ -410,6 +530,16 @@ export function useRealArbitrage(
       };
     } catch (error) {
       console.error('Execution failed:', error);
+      
+      // Move from executing to completed with failed status
+      executingOpportunitiesRef.current.delete(opportunity.id);
+      const failedOpp: ArbitrageOpportunity = {
+        ...opportunity,
+        status: 'failed',
+        submarinePhase: undefined,
+      };
+      completedOpportunitiesRef.current.set(opportunity.id, failedOpp);
+      
       setState(prev => ({
         ...prev,
         opportunities: prev.opportunities.map(op => 
@@ -422,6 +552,18 @@ export function useRealArbitrage(
     }
   }, [walletAddress, getAuthToken, pollForTransaction]);
 
+  // Get all completed opportunities (for history display)
+  const getCompletedOpportunities = useCallback((): ArbitrageOpportunity[] => {
+    return Array.from(completedOpportunitiesRef.current.values()).sort(
+      (a, b) => (b.executedAt || 0) - (a.executedAt || 0)
+    );
+  }, []);
+
+  // Get all executing opportunities
+  const getExecutingOpportunities = useCallback((): ArbitrageOpportunity[] => {
+    return Array.from(executingOpportunitiesRef.current.values());
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -432,5 +574,12 @@ export function useRealArbitrage(
     };
   }, []);
 
-  return { ...state, startScanning, stopScanning, executeOpportunity };
+  return { 
+    ...state, 
+    startScanning, 
+    stopScanning, 
+    executeOpportunity,
+    getCompletedOpportunities,
+    getExecutingOpportunities,
+  };
 }
