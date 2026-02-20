@@ -194,15 +194,6 @@ export function useArbitrageScanner() {
           ...prev,
           totalScanned: prev.totalScanned + convertedOpps.length,
         }));
-
-        // Auto-execute if enabled
-        if (config.autoExecute) {
-          for (const opp of convertedOpps.slice(0, 3)) {
-            if (opp.netProfit > 0 && opp.confidence > 80) {
-              setTimeout(() => executeOpportunity(opp.id), 1000);
-            }
-          }
-        }
       } else {
         // No opportunities found - clear list but show empty state (not demo)
         const executingOpps = Array.from(executingOpportunitiesRef.current.values());
@@ -230,7 +221,7 @@ export function useArbitrageScanner() {
     } finally {
       setIsScanning(false);
     }
-  }, [config.networks, config.minProfitPercent, config.minProfitUsd, config.autoExecute]);
+  }, [config.networks, config.minProfitPercent, config.minProfitUsd]);
 
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
@@ -257,9 +248,40 @@ export function useArbitrageScanner() {
     setConfig(prev => ({ ...prev, autoExecute: !prev.autoExecute }));
   }, []);
 
-  // Real execution via backend edge function
+  // Ref to store latest opportunities for executeOpportunity callback
+  const opportunitiesRef = useRef<ArbitrageOpportunity[]>([]);
+  opportunitiesRef.current = opportunities;
+
+  // Validate opportunity viability before execution
+  const validateOpportunity = (opp: ArbitrageOpportunity, backendOpp: BackendOpportunity): { valid: boolean; error?: string } => {
+    // Check if profit is still positive after execution
+    if (opp.netProfit <= 0) {
+      return { valid: false, error: 'Net profit is not positive' };
+    }
+
+    // Check if confidence is sufficient
+    if (opp.confidence < 50) {
+      return { valid: false, error: 'Confidence too low - potential slippage' };
+    }
+
+    // Check if gas estimate is reasonable
+    const gasUsd = opp.gasEstimate ? parseFloat(opp.gasEstimate) : 0;
+    if (gasUsd > opp.netProfit) {
+      return { valid: false, error: 'Gas costs exceed profit' };
+    }
+
+    // Check if liquidity is sufficient
+    if (backendOpp.liquidityUsd < opp.profitUsd * 10) {
+      return { valid: false, error: 'Insufficient liquidity in pools' };
+    }
+
+    return { valid: true };
+  };
+
+  // Real execution via backend edge function with validation
   const executeOpportunity = useCallback(async (id: string) => {
-    const executingOpp = opportunities.find(o => o.id === id);
+    // Use ref to get latest opportunities
+    const executingOpp = opportunitiesRef.current.find(o => o.id === id);
     if (!executingOpp) return;
     
     if (!isSupabaseConfigured()) {
@@ -279,6 +301,19 @@ export function useArbitrageScanner() {
       return;
     }
 
+    // Validate opportunity before execution
+    const validation = validateOpportunity(executingOpp, backendOpp);
+    if (!validation.valid) {
+      console.warn(`Opportunity validation failed: ${validation.error}`);
+      setScanError(`Cannot execute: ${validation.error}`);
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, status: 'failed' as const } : opp
+        )
+      );
+      return;
+    }
+
     // Store in executing ref for persistence
     executingOpportunitiesRef.current.set(id, { ...executingOpp, status: 'executing' });
 
@@ -288,50 +323,71 @@ export function useArbitrageScanner() {
       )
     );
 
+    console.log(`Executing opportunity ${id}:`, {
+      network: executingOpp.sourceNetwork,
+      profit: executingOpp.netProfit,
+      confidence: executingOpp.confidence,
+      route: executingOpp.route,
+    });
+
     try {
+      const executionPayload = { 
+        network: executingOpp.sourceNetwork,
+        tokenIn: executingOpp.tokenIn,
+        tokenOut: executingOpp.tokenOut,
+        amountIn: backendOpp.amountIn,
+        sourceDex: executingOpp.sourceDex,
+        targetDex: executingOpp.targetDex,
+        profitRecipient: backendOpp.executorAddress,
+        minProfit: executingOpp.netProfit * 0.8, // 80% of estimated profit as minimum
+        slippageTolerance: 0.5, // 0.5% slippage tolerance
+        isSubmarine: true,
+        opportunityId: id,
+      };
+
+      console.log('Execution payload:', executionPayload);
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}` 
         },
-        body: JSON.stringify({ 
-          network: executingOpp.sourceNetwork,
-          tokenIn: executingOpp.tokenIn,
-          tokenOut: executingOpp.tokenOut,
-          amountIn: backendOpp.amountIn,
-          sourceDex: executingOpp.sourceDex,
-          targetDex: executingOpp.targetDex,
-          profitRecipient: backendOpp.executorAddress,
-          minProfit: executingOpp.netProfit * 0.8,
-          isSubmarine: true,
-        }),
+        body: JSON.stringify(executionPayload),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Execution failed: ${response.statusText} - ${errorText}`);
+        const errorMsg = `Execution failed: ${response.status} ${response.statusText} - ${errorText}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
       }
 
       const result = await response.json();
 
+      if (!result.taskId && !result.txHash) {
+        throw new Error('No transaction ID returned from execution');
+      }
+
+      const txHash = result.taskId || result.txHash;
+      console.log(`Transaction submitted: ${txHash}`);
+
       // Update with task ID
       const updatedOpp: ArbitrageOpportunity = {
         ...executingOpp,
-        txHash: result.taskId || result.txHash,
+        txHash,
+        status: 'executing',
       };
       executingOpportunitiesRef.current.set(id, updatedOpp);
 
       setOpportunities(prev =>
         prev.map(opp =>
-          opp.id === id ? { ...opp, txHash: result.taskId || result.txHash } : opp
+          opp.id === id ? { ...opp, txHash, status: 'executing' as const } : opp
         )
       );
 
       // Poll for transaction completion
-      if (result.taskId) {
-        pollForTransaction(id, executingOpp.sourceNetwork, result.taskId);
-      }
+      pollForTransaction(id, executingOpp.sourceNetwork, txHash);
 
     } catch (error) {
       console.error('Execution error:', error);
@@ -350,9 +406,11 @@ export function useArbitrageScanner() {
         )
       );
       
-      setScanError(error instanceof Error ? error.message : 'Execution failed');
+      const errorMessage = error instanceof Error ? error.message : 'Execution failed';
+      setScanError(errorMessage);
+      console.error(`Opportunity ${id} execution failed: ${errorMessage}`);
     }
-  }, [opportunities]);
+  }, [pollForTransaction]); // Include pollForTransaction in dependencies
 
   // Poll for transaction confirmation
   const pollForTransaction = useCallback(async (
@@ -368,10 +426,13 @@ export function useArbitrageScanner() {
       attempts++;
       
       try {
-        // Try to get transaction from Supabase
-        const { data: txData, error } = await import('@/integrations/supabase/client')
-          .then(m => m.supabase)
-          .then(s => s.from('transactions').select('*').eq('hash', taskId).single());
+        // Try to get transaction from Supabase - import client directly
+        const { supabase } = await import('@/integrations/supabase/client');
+        const { data: txData, error } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('hash', taskId)
+          .single();
 
         if (!error && txData && (txData as Record<string, unknown>).real_tx_hash && txData.status === 'confirmed') {
           clearInterval(pollTimer);
@@ -475,7 +536,9 @@ export function useArbitrageScanner() {
                 }));
                 return;
               }
-            } catch {}
+            } catch (rpcError) {
+              // Silently continue - RPC lookup is optional fallback
+            }
           }
         }
 
@@ -541,6 +604,33 @@ export function useArbitrageScanner() {
     };
   }, []);
 
+// Ref to store executeOpportunity for auto-execute effect
+  const executeOpportunityRef = useRef(executeOpportunity);
+  executeOpportunityRef.current = executeOpportunity;
+
+  // Auto-execute high-confidence opportunities when found
+  useEffect(() => {
+    if (!config.autoExecute || opportunities.length === 0) return;
+    
+    // Find high-confidence pending opportunities
+    const highConfidenceOpps = opportunities.filter(
+      opp => opp.status === 'pending' && opp.netProfit > 0 && opp.confidence > 80
+    );
+    
+    // Auto-execute top opportunity after a short delay
+    if (highConfidenceOpps.length > 0) {
+      const timer = setTimeout(() => {
+        const topOpp = highConfidenceOpps[0];
+        executeOpportunityRef.current(topOpp.id);
+      }, 2000);
+      
+      return () => clearTimeout(timer);
+    }
+    
+    // Cleanup if no high confidence opps
+    return undefined;
+  }, [opportunities, config.autoExecute]);
+
   return {
     opportunities,
     config,
@@ -554,4 +644,7 @@ export function useArbitrageScanner() {
     lastScanTime,
     scanError,
     apiStatus,
-    getCompletedOpportunities,3
+    getCompletedOpportunities,
+    getExecutingOpportunities,
+  };
+}
