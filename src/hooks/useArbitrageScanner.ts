@@ -278,141 +278,21 @@ export function useArbitrageScanner() {
     return { valid: true };
   };
 
-  // Real execution via backend edge function with validation
-  const executeOpportunity = useCallback(async (id: string) => {
-    // Use ref to get latest opportunities
-    const executingOpp = opportunitiesRef.current.find(o => o.id === id);
-    if (!executingOpp) return;
-    
-    if (!isSupabaseConfigured()) {
-      setOpportunities(prev =>
-        prev.map(opp =>
-          opp.id === id ? { ...opp, status: 'failed' as const } : opp
-        )
-      );
-      setScanError('Cannot execute: Supabase not configured');
-      return;
-    }
+  // Get RPC URL for network
+  const getRpcUrl = (network: Network): string | null => {
+    const RPC_URLS: Record<Network, string> = {
+      ethereum: 'https://eth.llamarpc.com',
+      arbitrum: 'https://arb1.arbitrum.io/rpc',
+      polygon: 'https://polygon-rpc.com',
+      bsc: 'https://bsc-dataseed.binance.org',
+      optimism: 'https://optimism.drpc.org',
+      base: 'https://base.drpc.org',
+      avalanche: 'https://api.avax.network/ext/bc/C/rpc',
+    };
+    return RPC_URLS[network] || null;
+  };
 
-    // Get the full backend opportunity data
-    const backendOpp = backendOpportunitiesRef.current.get(id);
-    if (!backendOpp) {
-      setScanError('Opportunity data not found. Please re-scan.');
-      return;
-    }
-
-    // Validate opportunity before execution
-    const validation = validateOpportunity(executingOpp, backendOpp);
-    if (!validation.valid) {
-      console.warn(`Opportunity validation failed: ${validation.error}`);
-      setScanError(`Cannot execute: ${validation.error}`);
-      setOpportunities(prev =>
-        prev.map(opp =>
-          opp.id === id ? { ...opp, status: 'failed' as const } : opp
-        )
-      );
-      return;
-    }
-
-    // Store in executing ref for persistence
-    executingOpportunitiesRef.current.set(id, { ...executingOpp, status: 'executing' });
-
-    setOpportunities(prev =>
-      prev.map(opp =>
-        opp.id === id ? { ...opp, status: 'executing' as const } : opp
-      )
-    );
-
-    console.log(`Executing opportunity ${id}:`, {
-      network: executingOpp.sourceNetwork,
-      profit: executingOpp.netProfit,
-      confidence: executingOpp.confidence,
-      route: executingOpp.route,
-    });
-
-    try {
-      const executionPayload = { 
-        network: executingOpp.sourceNetwork,
-        tokenIn: executingOpp.tokenIn,
-        tokenOut: executingOpp.tokenOut,
-        amountIn: backendOpp.amountIn,
-        sourceDex: executingOpp.sourceDex,
-        targetDex: executingOpp.targetDex,
-        profitRecipient: backendOpp.executorAddress,
-        minProfit: executingOpp.netProfit * 0.8, // 80% of estimated profit as minimum
-        slippageTolerance: 0.5, // 0.5% slippage tolerance
-        isSubmarine: true,
-        opportunityId: id,
-      };
-
-      console.log('Execution payload:', executionPayload);
-
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}` 
-        },
-        body: JSON.stringify(executionPayload),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        const errorMsg = `Execution failed: ${response.status} ${response.statusText} - ${errorText}`;
-        console.error(errorMsg);
-        throw new Error(errorMsg);
-      }
-
-      const result = await response.json();
-
-      if (!result.taskId && !result.txHash) {
-        throw new Error('No transaction ID returned from execution');
-      }
-
-      const txHash = result.taskId || result.txHash;
-      console.log(`Transaction submitted: ${txHash}`);
-
-      // Update with task ID
-      const updatedOpp: ArbitrageOpportunity = {
-        ...executingOpp,
-        txHash,
-        status: 'executing',
-      };
-      executingOpportunitiesRef.current.set(id, updatedOpp);
-
-      setOpportunities(prev =>
-        prev.map(opp =>
-          opp.id === id ? { ...opp, txHash, status: 'executing' as const } : opp
-        )
-      );
-
-      // Poll for transaction completion
-      pollForTransaction(id, executingOpp.sourceNetwork, txHash);
-
-    } catch (error) {
-      console.error('Execution error:', error);
-      
-      // Move to failed
-      executingOpportunitiesRef.current.delete(id);
-      const failedOpp: ArbitrageOpportunity = {
-        ...executingOpp,
-        status: 'failed',
-      };
-      completedOpportunitiesRef.current.set(id, failedOpp);
-      
-      setOpportunities(prev =>
-        prev.map(opp =>
-          opp.id === id ? { ...opp, status: 'failed' as const } : opp
-        )
-      );
-      
-      const errorMessage = error instanceof Error ? error.message : 'Execution failed';
-      setScanError(errorMessage);
-      console.error(`Opportunity ${id} execution failed: ${errorMessage}`);
-    }
-  }, [pollForTransaction]); // Include pollForTransaction in dependencies
-
-  // Poll for transaction confirmation
+  // Poll for transaction confirmation - DEFINED FIRST so executeOpportunity can reference it
   const pollForTransaction = useCallback(async (
     opportunityId: string,
     network: Network,
@@ -427,7 +307,8 @@ export function useArbitrageScanner() {
       
       try {
         // Try to get transaction from Supabase - import client directly
-        const { supabase } = await import('@/integrations/supabase/client');
+        const supabaseModule = await import('@/integrations/supabase/client');
+        const supabase = supabaseModule.supabase;
         const { data: txData, error } = await supabase
           .from('transactions')
           .select('*')
@@ -566,18 +447,139 @@ export function useArbitrageScanner() {
     }, pollInterval);
   }, []);
 
-  const getRpcUrl = (network: Network): string | null => {
-    const RPC_URLS: Record<Network, string> = {
-      ethereum: 'https://eth.llamarpc.com',
-      arbitrum: 'https://arb1.arbitrum.io/rpc',
-      polygon: 'https://polygon-rpc.com',
-      bsc: 'https://bsc-dataseed.binance.org',
-      optimism: 'https://optimism.drpc.org',
-      base: 'https://base.drpc.org',
-      avalanche: 'https://api.avax.network/ext/bc/C/rpc',
-    };
-    return RPC_URLS[network] || null;
-  };
+  // Real execution via backend edge function with validation
+  const executeOpportunity = useCallback(async (id: string) => {
+    // Use ref to get latest opportunities
+    const executingOpp = opportunitiesRef.current.find(o => o.id === id);
+    if (!executingOpp) return;
+    
+    if (!isSupabaseConfigured()) {
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, status: 'failed' as const } : opp
+        )
+      );
+      setScanError('Cannot execute: Supabase not configured');
+      return;
+    }
+
+    // Get the full backend opportunity data
+    const backendOpp = backendOpportunitiesRef.current.get(id);
+    if (!backendOpp) {
+      setScanError('Opportunity data not found. Please re-scan.');
+      return;
+    }
+
+    // Validate opportunity before execution
+    const validation = validateOpportunity(executingOpp, backendOpp);
+    if (!validation.valid) {
+      console.warn(`Opportunity validation failed: ${validation.error}`);
+      setScanError(`Cannot execute: ${validation.error}`);
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, status: 'failed' as const } : opp
+        )
+      );
+      return;
+    }
+
+    // Store in executing ref for persistence
+    executingOpportunitiesRef.current.set(id, { ...executingOpp, status: 'executing' });
+
+    setOpportunities(prev =>
+      prev.map(opp =>
+        opp.id === id ? { ...opp, status: 'executing' as const } : opp
+      )
+    );
+
+    console.log(`Executing opportunity ${id}:`, {
+      network: executingOpp.sourceNetwork,
+      profit: executingOpp.netProfit,
+      confidence: executingOpp.confidence,
+      route: executingOpp.route,
+    });
+
+    try {
+      const executionPayload = { 
+        network: executingOpp.sourceNetwork,
+        tokenIn: executingOpp.tokenIn,
+        tokenOut: executingOpp.tokenOut,
+        amountIn: backendOpp.amountIn,
+        sourceDex: executingOpp.sourceDex,
+        targetDex: executingOpp.targetDex,
+        profitRecipient: backendOpp.executorAddress,
+        minProfit: executingOpp.netProfit * 0.8, // 80% of estimated profit as minimum
+        slippageTolerance: 0.5, // 0.5% slippage tolerance
+        isSubmarine: true,
+        opportunityId: id,
+      };
+
+      console.log('Execution payload:', executionPayload);
+
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json', 
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}` 
+        },
+        body: JSON.stringify(executionPayload),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const errorMsg = `Execution failed: ${response.status} ${response.statusText} - ${errorText}`;
+        console.error(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      const result = await response.json();
+
+      if (!result.taskId && !result.txHash) {
+        throw new Error('No transaction ID returned from execution');
+      }
+
+      const txHash = result.taskId || result.txHash;
+      console.log(`Transaction submitted: ${txHash}`);
+
+      // Update with task ID
+      const updatedOpp: ArbitrageOpportunity = {
+        ...executingOpp,
+        txHash,
+        status: 'executing',
+      };
+      executingOpportunitiesRef.current.set(id, updatedOpp);
+
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, txHash, status: 'executing' as const } : opp
+        )
+      );
+
+      // Poll for transaction completion
+      pollForTransaction(id, executingOpp.sourceNetwork, txHash);
+
+    } catch (error) {
+      console.error('Execution error:', error);
+      
+      // Move to failed
+      executingOpportunitiesRef.current.delete(id);
+      const failedOpp: ArbitrageOpportunity = {
+        ...executingOpp,
+        status: 'failed',
+      };
+      completedOpportunitiesRef.current.set(id, failedOpp);
+      
+      setOpportunities(prev =>
+        prev.map(opp =>
+          opp.id === id ? { ...opp, status: 'failed' as const } : opp
+        )
+      );
+      
+      const errorMessage = error instanceof Error ? error.message : 'Execution failed';
+      setScanError(errorMessage);
+      console.error(`Opportunity ${id} execution failed: ${errorMessage}`);
+    }
+  }, []);
 
   const updateConfig = useCallback((updates: Partial<ScannerConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
@@ -627,8 +629,7 @@ export function useArbitrageScanner() {
       return () => clearTimeout(timer);
     }
     
-    // Cleanup if no high confidence opps
-    return undefined;
+    // No cleanup needed when no high confidence opportunities
   }, [opportunities, config.autoExecute]);
 
   return {
