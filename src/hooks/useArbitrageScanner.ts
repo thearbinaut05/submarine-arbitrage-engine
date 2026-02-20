@@ -579,7 +579,7 @@ export function useArbitrageScanner() {
       setScanError(errorMessage);
       console.error(`Opportunity ${id} execution failed: ${errorMessage}`);
     }
-  }, []);
+  }, [pollForTransaction]);
 
   const updateConfig = useCallback((updates: Partial<ScannerConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
