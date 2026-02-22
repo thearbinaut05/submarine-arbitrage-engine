@@ -31,6 +31,11 @@ interface PriceData {
   liquidity: number;
   poolAddress: string;
   feeTier?: number;
+  // Debug info
+  reserve0?: number;
+  reserve1?: number;
+  token0Symbol?: string;
+  token1Symbol?: string;
 }
 
 interface ArbitrageOpportunity {
@@ -44,8 +49,8 @@ interface ArbitrageOpportunity {
   tokenOut: string;
   tokenInAddress: string;
   tokenOutAddress: string;
-  amountIn: string; // Wei amount as string for BigInt compatibility
-  amountInUsd: number; // USD value of trade
+  amountIn: string;
+  amountInUsd: number;
   profitPercent: number;
   profitUsd: number;
   gasEstimate: string;
@@ -59,9 +64,87 @@ interface ArbitrageOpportunity {
   poolAddresses: { buy: string; sell: string };
   liquidityUsd: number;
   blockNumber: number;
+  // Debug/analysis fields
+  rawSpread?: number;
+  slippageLoss?: number;
+  realProfitAfterSlippage?: number;
+  gasEstimateGwei?: number;
+  flashLoanFeePercent?: number;
+  debugInfo?: Record<string, unknown>;
 }
 
-// Fast RPC call with timeout and fallback
+// ============================================================
+// DEBUG MODE - Set to true for detailed logging
+// ============================================================
+const DEBUG_MODE = true;
+
+function debugLog(...args: unknown[]) {
+  if (DEBUG_MODE) {
+    console.log(`[DEBUG]`, ...args);
+  }
+}
+
+// ============================================================
+// NETWORK-SPECIFIC GAS LIMITS (realistic estimates)
+// ============================================================
+const NETWORK_GAS_LIMITS: Record<string, {
+  flashLoan: number;
+  swap: number;
+  flashSwap: number;
+}> = {
+  ethereum: { flashLoan: 350000, swap: 150000, flashSwap: 300000 },
+  arbitrum: { flashLoan: 500000, swap: 200000, flashSwap: 400000 },
+  polygon: { flashLoan: 400000, swap: 180000, flashSwap: 350000 },
+  bsc: { flashLoan: 350000, swap: 150000, flashSwap: 300000 },
+  optimism: { flashLoan: 450000, swap: 180000, flashSwap: 380000 },
+  base: { flashLoan: 450000, swap: 180000, flashSwap: 380000 },
+  avalanche: { flashLoan: 400000, swap: 180000, flashSwap: 350000 },
+};
+
+// ============================================================
+// TOKEN-SPECIFIC FLASH LOAN FEES (basis points)
+// ============================================================
+const FLASH_LOAN_FEES: Record<string, number> = {
+  // Stablecoins - lower fees
+  'USDC': 2, 'USDT': 2, 'DAI': 2, 'FRAX': 3, 'LUSD': 3, 'BUSD': 2,
+  // ETH and wrapped
+  'WETH': 3, 'ETH': 3, 'WBTC': 5, 'renBTC': 5,
+  // LSDs
+  'stETH': 4, 'wstETH': 4, 'rETH': 4, 'cbETH': 4,
+  // DeFi tokens
+  'LINK': 5, 'UNI': 5, 'AAVE': 5, 'CRV': 5, 'LDO': 5,
+  'MKR': 5, 'COMP': 5, 'SNX': 5, 'BAL': 5,
+  // L2 tokens
+  'MATIC': 5, 'ARB': 5, 'OP': 5,
+  // Default
+  'default': 5,
+};
+
+function getFlashLoanFee(token: string): number {
+  return FLASH_LOAN_FEES[token] || FLASH_LOAN_FEES['default'];
+}
+
+// ============================================================
+// TOKEN PRICES (fallback - should be fetched from oracle)
+// ============================================================
+const TOKEN_USD_PRICES: Record<string, number> = {
+  'WETH': 3500, 'ETH': 3500,
+  'WBTC': 65000, 'renBTC': 64000,
+  'USDC': 1, 'USDT': 1, 'DAI': 1, 'FRAX': 1, 'LUSD': 1, 'BUSD': 1,
+  'LINK': 15, 'UNI': 10, 'AAVE': 200, 'CRV': 0.3, 'LDO': 2,
+  'MKR': 1500, 'COMP': 50, 'SNX': 2, 'BAL': 3,
+  'MATIC': 0.8, 'ARB': 1.2, 'OP': 2,
+  'stETH': 3400, 'wstETH': 3500, 'rETH': 3400, 'cbETH': 3400,
+};
+
+function getTokenPrice(token: string): number {
+  return TOKEN_USD_PRICES[token] || 1;
+}
+
+// ============================================================
+// RPC CALLS WITH ENHANCED ERROR HANDLING
+// ============================================================
+
 async function rpcCall(
   network: string,
   method: string,
@@ -71,11 +154,15 @@ async function rpcCall(
   const rpcs = RPC_ENDPOINTS[network];
   if (!rpcs?.length) throw new Error(`No RPC for ${network}`);
 
+  let lastError: Error | null = null;
+  
   for (let i = 0; i < Math.min(rpcs.length, SCANNER_CONFIG.maxRetries + 1); i++) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeout);
 
     try {
+      debugLog(`RPC call to ${rpcs[i]}: ${method}`);
+      
       const response = await fetch(rpcs[i], {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -84,103 +171,16 @@ async function rpcCall(
       });
 
       clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
       const data = await response.json();
-      if (data.result !== undefined) return data.result;
-    } catch {
-      clearTimeout(timeoutId);
-    }
-  }
-  throw new Error(`RPC failed for ${network}`);
-}
-
-// Get current block number
-async function getBlockNumber(network: string): Promise<number> {
-  const result = await rpcCall(network, 'eth_blockNumber', []);
-  return parseInt(result as string, 16);
-}
-
-// Get current gas price
-async function getGasPrice(network: string): Promise<number> {
-  const result = await rpcCall(network, 'eth_gasPrice', []);
-  return parseInt(result as string, 16) / 1e9; // Convert to gwei
-}
-
-// Get Uniswap V2 pair address
-async function getV2PairAddress(
-  network: string,
-  factoryAddress: string,
-  token0: string,
-  token1: string
-): Promise<string | null> {
-  try {
-    const data = '0xe6a43905' + 
-      token0.slice(2).padStart(64, '0') + 
-      token1.slice(2).padStart(64, '0');
-    
-    const result = await rpcCall(network, 'eth_call', [{ to: factoryAddress, data }, 'latest']);
-    if (!result || result === '0x') return null;
-    
-    const address = '0x' + (result as string).slice(26);
-    if (address === '0x0000000000000000000000000000000000000000') return null;
-    
-    return address;
-  } catch {
-    return null;
-  }
-}
-
-// Get Uniswap V3 pool address
-async function getV3PoolAddress(
-  network: string,
-  factoryAddress: string,
-  token0: string,
-  token1: string,
-  fee: number
-): Promise<string | null> {
-  try {
-    const data = '0x1698ee82' + 
-      token0.slice(2).padStart(64, '0') + 
-      token1.slice(2).padStart(64, '0') + 
-      fee.toString(16).padStart(64, '0');
-    
-    const result = await rpcCall(network, 'eth_call', [{ to: factoryAddress, data }, 'latest']);
-    if (!result || result === '0x') return null;
-    
-    const address = '0x' + (result as string).slice(26);
-    if (address === '0x0000000000000000000000000000000000000000') return null;
-    
-    return address;
-  } catch {
-    return null;
-  }
-}
-
-// Fetch V2 price and reserves
-async function fetchV2Price(
-  network: string,
-  pairAddress: string,
-  token0Decimals: number,
-  token1Decimals: number
-): Promise<{ price: number; liquidity: number } | null> {
-  try {
-    const result = await rpcCall(network, 'eth_call', [
-      { to: pairAddress, data: '0x0902f1ac' },
-      'latest'
-    ]);
-    
-    if (!result || result === '0x') return null;
-    
-    const hex = (result as string).slice(2);
-    const reserve0 = BigInt('0x' + hex.slice(0, 64));
-    const reserve1 = BigInt('0x' + hex.slice(64, 128));
-    
-    const amount0 = Number(reserve0) / (10 ** token0Decimals);
-    const amount1 = Number(reserve1) / (10 ** token1Decimals);
-    
-    if (amount0 === 0 || amount1 === 0) return null;
-    
-    return {
-      price: amount1 / amount0,
+      
+      if (data.error) {
+        throw new Error(data.error.message || 'RPC error');
+      }
       liquidity: Math.min(amount0, amount1) * 2,
     };
   } catch {
