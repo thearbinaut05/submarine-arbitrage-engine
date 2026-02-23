@@ -22,11 +22,7 @@ interface ScanRequest {
   networks: string[];
   minProfitPercent?: number;
   minProfitUsd?: number;
-  maxConcurrent?: number;
-}
-
-interface PriceData {
-  dex: string;
+  ma11``
   price: number;
   liquidity: number;
   poolAddress: string;

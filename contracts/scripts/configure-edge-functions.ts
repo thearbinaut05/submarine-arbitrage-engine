@@ -1,6 +1,20 @@
 import * as fs from "fs";
 import * as path from "path";
 
+interface NetworkConfig {
+  chainId: number;
+  contracts: {
+    flashArbExecutor: string;
+    gaslessRelayer: string;
+    positionRebalancer: string;
+  };
+  deployedAt: number;
+}
+
+interface DeploymentConfig {
+  [network: string]: NetworkConfig;
+}
+
 /**
  * Generates the configuration file for Lovable edge functions
  * Run this after deploying contracts to update your backend
@@ -9,7 +23,7 @@ async function main() {
   const networks = ["mainnet", "arbitrum", "polygon", "bsc"];
   const deploymentsDir = path.join(__dirname, "../deployments");
   
-  const config: Record<string, any> = {};
+  const config: DeploymentConfig = {} as DeploymentConfig;
 
   console.log("\n📋 Generating Edge Function Configuration\n");
 
@@ -83,3 +97,4 @@ export function getContractAddress(
 }
 
 main().catch(console.error);
+
