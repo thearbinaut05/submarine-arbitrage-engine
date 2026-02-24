@@ -140,7 +140,8 @@ async function main() {
 
 main()
   .then(() => process.exit(0))
-  .catch((error: Error) => {r) => {
-    console.error("\n❌ Deployment failed:", error.message);essage);
+  .catch((error: Error) => {
+    console.error("\n❌ Deployment failed:", error.message);
     process.exit(1);
   });
+

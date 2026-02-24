@@ -18,6 +18,7 @@ import { ethers, network, upgrades } from "hardhat";
 import { NETWORK_CONFIG, DeployedContracts } from "./config";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
 
 // Load environment variables
 // Check if .env.mainnet exists, otherwise use default .env
@@ -25,7 +26,7 @@ const envPath = fs.existsSync(path.join(__dirname, "../../.env.mainnet"))
   ? path.join(__dirname, "../../.env.mainnet") 
   : path.join(__dirname, "../../.env");
 if (fs.existsSync(envPath)) {
-  require("dotenv").config({ path: envPath });
+  dotenv.config({ path: envPath });
 }
 
 async function main() {

@@ -19,11 +19,12 @@ import { ethers, network, upgrades } from "hardhat";
 import { NETWORK_CONFIG, DeployedContracts } from "./config";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
 
 // Load environment variables
 const envPath = path.join(__dirname, "../../.env");
 if (fs.existsSync(envPath)) {
-  require("dotenv").config({ path: envPath });
+  dotenv.config({ path: envPath });
 }
 
 async function main() {
@@ -203,7 +204,7 @@ async function main() {
       timestamp: Date.now(),
       flashArbExecutor: flashArbAddress,
       txHash: mockTxHash,
-      profit: 0, // Simulated
+      profit: 0,
       gasUsed: 150000,
       status: "success"
     };

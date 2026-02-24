@@ -21,6 +21,14 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+    },
+  },
+  // Allow explicit any for test files and contract deployment scripts
+  {
+    files: ["src/test/**/*.ts", "contracts/scripts/**/*.ts"],
+    rules: {
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 );

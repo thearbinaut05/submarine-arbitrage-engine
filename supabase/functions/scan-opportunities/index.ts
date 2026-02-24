@@ -22,7 +22,12 @@ interface ScanRequest {
   networks: string[];
   minProfitPercent?: number;
   minProfitUsd?: number;
-  ma11``
+  maxConcurrent?: number;
+}
+
+// Price data from DEX pools
+interface PriceData {
+  dex: string;
   price: number;
   liquidity: number;
   poolAddress: string;
@@ -177,8 +182,118 @@ async function rpcCall(
       if (data.error) {
         throw new Error(data.error.message || 'RPC error');
       }
-      liquidity: Math.min(amount0, amount1) * 2,
-    };
+      
+      return data.result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      debugLog(`RPC error (attempt ${i + 1}):`, lastError.message);
+    }
+  }
+  
+  throw lastError || new Error('RPC call failed');
+}
+
+// Get current block number
+async function getBlockNumber(network: string): Promise<number> {
+  try {
+    const result = await rpcCall(network, 'eth_blockNumber', []);
+    return parseInt(result as string, 16);
+  } catch {
+    return 0;
+  }
+}
+
+// Get current gas price
+async function getGasPrice(network: string): Promise<number> {
+  try {
+    const result = await rpcCall(network, 'eth_gasPrice', []);
+    return parseInt(result as string, 16) / 1e9;
+  } catch {
+    return GAS_LIMITS[network]?.target || 30;
+  }
+}
+
+// Get V2 pair address from factory
+async function getV2PairAddress(
+  network: string,
+  factory: string,
+  tokenA: string,
+  tokenB: string
+): Promise<string | null> {
+  try {
+    const result = await rpcCall(network, 'eth_call', [{
+      to: factory,
+      data: '0xe6a43905' +
+        tokenA.slice(2).padStart(64, '0') +
+        tokenB.slice(2).padStart(64, '0')
+    }, 'latest']);
+    
+    if (!result || result === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+      return null;
+    }
+    
+    return '0x' + (result as string).slice(26);
+  } catch {
+    return null;
+  }
+}
+
+// Fetch V2 price from pair reserves
+async function fetchV2Price(
+  network: string,
+  pairAddress: string,
+  token0Decimals: number,
+  token1Decimals: number
+): Promise<{ price: number; liquidity: number } | null> {
+  try {
+    const result = await rpcCall(network, 'eth_call', [{
+      to: pairAddress,
+      data: '0x0902f1ac'
+    }, 'latest']);
+    
+    if (!result || result === '0x') return null;
+    
+    const data = result as string;
+    const reserve0 = BigInt('0x' + data.slice(2, 66));
+    const reserve1 = BigInt('0x' + data.slice(66, 130));
+    
+    if (reserve0 === 0n || reserve1 === 0n) return null;
+    
+    const price = Number(reserve1) / Number(reserve0) * Math.pow(10, token0Decimals - token1Decimals);
+    const liquidity = Number(reserve0) * Number(reserve1);
+    
+    return { price, liquidity: Math.sqrt(liquidity) };
+  } catch {
+    return null;
+  }
+}
+
+// Get V3 pool address from factory
+async function getV3PoolAddress(
+  network: string,
+  factory: string,
+  tokenA: string,
+  tokenB: string,
+  fee: number
+): Promise<string | null> {
+  try {
+    const [token0, token1] = tokenA.toLowerCase() < tokenB.toLowerCase() 
+      ? [tokenA, tokenB] 
+      : [tokenB, tokenA];
+    
+    const result = await rpcCall(network, 'eth_call', [{
+      to: factory,
+      data: '0x5e1ef9ea' +
+        token0.slice(2).padStart(64, '0') +
+        token1.slice(2).padStart(64, '0') +
+        fee.toString(16).padStart(64, '0')
+    }, 'latest']);
+    
+    if (!result || result === '0x0000000000000000000000000000000000000000000000000000000000000000') {
+      return null;
+    }
+    
+    return '0x' + (result as string).slice(26);
   } catch {
     return null;
   }
@@ -192,7 +307,6 @@ async function fetchV3Price(
   token1Decimals: number
 ): Promise<{ price: number; liquidity: number } | null> {
   try {
-    // Get slot0 for sqrtPriceX96
     const slot0Result = await rpcCall(network, 'eth_call', [
       { to: poolAddress, data: '0x3850c7bd' },
       'latest'
@@ -202,11 +316,9 @@ async function fetchV3Price(
     
     const sqrtPriceX96 = BigInt('0x' + (slot0Result as string).slice(2, 66));
     
-    // Calculate price from sqrtPriceX96
     const price = (Number(sqrtPriceX96) ** 2 / (2 ** 192)) * 
       (10 ** (token0Decimals - token1Decimals));
     
-    // Get liquidity
     const liqResult = await rpcCall(network, 'eth_call', [
       { to: poolAddress, data: '0x1a686502' },
       'latest'
@@ -308,7 +420,7 @@ async function calculateOpportunity(
   blockNumber: number,
   minProfitPercent: number,
   minProfitUsd: number
-): ArbitrageOpportunity | null {
+): Promise<ArbitrageOpportunity | null> {
   if (prices.length < 2) return null;
   
   const tokens = TOKEN_ADDRESSES[network];
@@ -317,7 +429,6 @@ async function calculateOpportunity(
   
   if (!tokens || !contracts) return null;
   
-  // Find best buy (lowest price) and sell (highest price)
   let bestBuy = prices[0];
   let bestSell = prices[0];
   
@@ -333,38 +444,27 @@ async function calculateOpportunity(
   
   if (spreadPercent < minProfitPercent) return null;
   
-  // Calculate trade size based on liquidity
   const minLiquidity = Math.min(bestBuy.liquidity, bestSell.liquidity);
   const tradeAmountUsd = Math.min(
     SCANNER_CONFIG.defaultTradeAmountUsd,
-    minLiquidity * 0.1 // Max 10% of liquidity
+    minLiquidity * 0.1
   );
   
-  // Calculate amountIn in wei (based on tokenIn decimals)
-  // We use the buy price to determine how much tokenIn we need for the trade
   const tokenInDecimals = tokens[tokenIn].decimals;
-  // tradeAmountUsd is how much we want to trade in USD terms
-  // We need to convert this to tokenIn units
-  // If bestBuy.price is tokenOut/tokenIn, then we need tradeAmountUsd worth of tokenIn
-  // For simplicity, assuming base price reference, calculate tokenIn amount
-  const tokenInAmount = tradeAmountUsd / bestBuy.price; // Amount in tokenIn units
+  const tokenInAmount = tradeAmountUsd / bestBuy.price;
   const amountInWei = BigInt(Math.floor(tokenInAmount * (10 ** tokenInDecimals)));
   
-  // Estimate gas cost dynamically
-  const gasUsed = 500000; // Approximate gas for flash loan arb
+  const gasUsed = 500000;
   const gasCostGwei = gasUsed * gasPrice;
-  // Fetch real ETH price from CoinGecko or use on-chain price
   const ethPrice = await fetchEthPrice();
   const gasCostUsd = (gasCostGwei / 1e9) * ethPrice;
   
-  // Calculate profits
   const grossProfitUsd = tradeAmountUsd * spread;
-  const flashLoanFee = tradeAmountUsd * 0.0009; // Aave 0.09% fee
+  const flashLoanFee = tradeAmountUsd * 0.0009;
   const netProfitUsd = grossProfitUsd - gasCostUsd - flashLoanFee;
   
   if (netProfitUsd < minProfitUsd) return null;
   
-  // Calculate confidence based on spread and liquidity
   const liquidityScore = Math.min(minLiquidity / 100000, 1) * 30;
   const spreadScore = Math.min(spreadPercent / 2, 1) * 40;
   const gasSafetyScore = gasPrice < gasLimits.target ? 30 : (gasPrice < gasLimits.max ? 20 : 10);
@@ -382,7 +482,7 @@ async function calculateOpportunity(
     tokenOut,
     tokenInAddress: tokens[tokenIn].address,
     tokenOutAddress: tokens[tokenOut].address,
-    amountIn: amountInWei.toString(), // Wei amount as string
+    amountIn: amountInWei.toString(),
     amountInUsd: tradeAmountUsd,
     profitPercent: spreadPercent,
     profitUsd: grossProfitUsd,
@@ -412,20 +512,17 @@ async function scanNetwork(
   if (!pairs?.length) return opportunities;
   
   try {
-    // Get current block and gas price in parallel
     const [blockNumber, gasPrice] = await Promise.all([
       getBlockNumber(network),
       getGasPrice(network),
     ]);
     
-    // Check if gas price is acceptable
     const gasLimits = GAS_LIMITS[network];
     if (gasPrice > gasLimits.max) {
       console.log(`${network}: Gas too high (${gasPrice.toFixed(2)} gwei > ${gasLimits.max})`);
       return opportunities;
     }
     
-    // Scan pairs in parallel batches
     const batchSize = SCANNER_CONFIG.maxConcurrentPairs;
     for (let i = 0; i < pairs.length; i += batchSize) {
       const batch = pairs.slice(i, i + batchSize);
@@ -481,11 +578,9 @@ async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promis
     console.log(`   Route: ${opportunity.tokenIn} → ${opportunity.tokenOut} on ${opportunity.sourceNetwork}`);
     console.log(`   DEXs: Buy on ${opportunity.sourceDex}, Sell on ${opportunity.targetDex}`);
 
-    // Build flash loan calldata
     const tradeAmountWei = BigInt(Math.floor(10000 * (10 ** 18))).toString(16).padStart(64, '0');
     const minProfitWei = BigInt(Math.floor(opportunity.netProfit * 0.8 * (10 ** 18))).toString(16).padStart(64, '0');
     
-    // executeArbitrage(address,address,uint256,uint256,address,address)
     const functionSelector = '0x8f39d7e3';
     const calldata = functionSelector +
       opportunity.tokenInAddress.slice(2).padStart(64, '0') +
@@ -495,11 +590,9 @@ async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promis
       opportunity.poolAddresses.buy.slice(2).padStart(64, '0') +
       opportunity.poolAddresses.sell.slice(2).padStart(64, '0');
 
-    // Try sponsored call first, fall back to call-with-sync-fee
     let result;
     let gelatoResponse;
     
-    // Method 1: Sponsored call (requires contract whitelisting)
     gelatoResponse = await fetch('https://relay.gelato.digital/relays/v2/sponsored-call', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -515,7 +608,6 @@ async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promis
 
     result = await gelatoResponse.json();
     
-    // If sponsored fails, try call-with-sync-fee (pays from contract profits)
     if (!gelatoResponse.ok || !result.taskId) {
       console.log('Sponsored call failed, trying sync-fee relay...');
       
@@ -526,7 +618,7 @@ async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promis
           chainId: CHAIN_IDS[opportunity.sourceNetwork],
           target: contracts.flashArbExecutor,
           data: calldata,
-          feeToken: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Native token
+          feeToken: '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
           isRelayContext: true,
           retries: 3,
         }),
@@ -539,7 +631,6 @@ async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promis
       console.log(`✅ Auto-execution submitted: ${result.taskId}`);
       return { success: true, taskId: result.taskId };
     } else {
-      // Return prepared transaction data for manual execution
       console.log('Gelato relay failed, returning prepared tx data');
       return { 
         success: false, 
@@ -569,7 +660,7 @@ function shouldAutoExecute(opportunity: ArbitrageOpportunity): boolean {
   );
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -584,7 +675,6 @@ serve(async (req) => {
       minProfitUsd = SCANNER_CONFIG.minProfitUsd,
     } = body;
 
-    // Validate networks
     const validNetworks = networks.filter(n => RPC_ENDPOINTS[n]);
     if (validNetworks.length === 0) {
       return new Response(JSON.stringify({ 
@@ -596,17 +686,14 @@ serve(async (req) => {
       });
     }
 
-    // Scan all networks in parallel
     const scanResults = await Promise.all(
       validNetworks.map(network => scanNetwork(network, minProfitPercent, minProfitUsd))
     );
 
-    // Flatten and sort by profit
     const allOpportunities = scanResults
       .flat()
       .sort((a, b) => b.netProfit - a.netProfit);
 
-    // AUTO-EXECUTE high-confidence opportunities
     const autoExecuteResults: Array<{
       opportunityId: string;
       network: string;
@@ -623,7 +710,6 @@ serve(async (req) => {
     if (qualifiedOpportunities.length > 0) {
       console.log(`🎯 Found ${qualifiedOpportunities.length} opportunities qualifying for auto-execution`);
       
-      // Execute top 3 opportunities in parallel
       const topOpportunities = qualifiedOpportunities.slice(0, 3);
       const execPromises = topOpportunities.map(async (opp) => {
         const result = await autoExecuteOpportunity(opp);
@@ -641,7 +727,6 @@ serve(async (req) => {
       autoExecuteResults.push(...execResults);
     }
 
-    // Performance metrics
     const scanDuration = Date.now() - startTime;
     const networkStats = validNetworks.map((network, i) => ({
       network,
@@ -694,3 +779,4 @@ serve(async (req) => {
     });
   }
 });
+

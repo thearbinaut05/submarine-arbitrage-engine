@@ -21,10 +21,10 @@ async function main() {
   console.log(`Deployer: ${deployer.address}`);
 
   let contract;
-  let constructorArgs: any[];
+  let constructorArgs: unknown[];
 
   switch (contractName) {
-    case "FlashArbExecutor":
+    case "FlashArbExecutor": {
       const dexRouters = [
         config.uniswapV3Router,
         config.sushiswapRouter,
@@ -34,18 +34,21 @@ async function main() {
       const FlashArbExecutor = await ethers.getContractFactory("FlashArbExecutor");
       contract = await FlashArbExecutor.deploy(...constructorArgs);
       break;
+    }
 
-    case "GaslessRelayer":
+    case "GaslessRelayer": {
       constructorArgs = ["FlashArb Gasless Relayer", "1"];
       const GaslessRelayer = await ethers.getContractFactory("GaslessRelayer");
       contract = await GaslessRelayer.deploy(...constructorArgs);
       break;
+    }
 
-    case "PositionRebalancer":
+    case "PositionRebalancer": {
       constructorArgs = [config.aavePoolProvider];
       const PositionRebalancer = await ethers.getContractFactory("PositionRebalancer");
       contract = await PositionRebalancer.deploy(...constructorArgs);
       break;
+    }
 
     default:
       throw new Error(`Unknown contract: ${contractName}`);
@@ -70,3 +73,4 @@ main()
     console.error(error);
     process.exit(1);
   });
+

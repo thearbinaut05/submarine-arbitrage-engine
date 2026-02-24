@@ -18,13 +18,14 @@ import { ethers, network } from "hardhat";
 import { NETWORK_CONFIG } from "./config";
 import * as fs from "fs";
 import * as path from "path";
+import * as dotenv from "dotenv";
 
 // Load environment variables
 const envPath = fs.existsSync(path.join(__dirname, "../../.env.mainnet"))
   ? path.join(__dirname, "../../.env.mainnet")
   : path.join(__dirname, "../../.env");
 if (fs.existsSync(envPath)) {
-  require("dotenv").config({ path: envPath });
+  dotenv.config({ path: envPath });
 }
 
 async function main() {
