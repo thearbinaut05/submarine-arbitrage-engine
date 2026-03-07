@@ -391,8 +391,8 @@ function buildUniswapV3Calldata(
   let amountInBigInt: bigint;
   try {
     amountInBigInt = BigInt(amountIn);
-  } catch (e) {
-    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${e.message}`);
+  } catch (e: unknown) {
+    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${(e as Error).message}`);
   }
   
   // ABI encode the struct: (tokenIn, tokenOut, fee, recipient, deadline, amountIn, amountOutMinimum, sqrtPriceLimitX96)
