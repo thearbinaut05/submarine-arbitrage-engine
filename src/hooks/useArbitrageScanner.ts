@@ -83,12 +83,8 @@ export function useArbitrageScanner() {
   const abortControllerRef = useRef<AbortController | null>(null);
   const scanGroupIndexRef = useRef(0);
   
-  // Network groups to rotate through (max 3 per call to avoid CPU timeout)
-  const NETWORK_GROUPS = [
-    ['ethereum', 'arbitrum', 'polygon'],
-    ['optimism', 'base', 'avalanche'],
-    ['bsc', 'ethereum', 'optimism'],
-  ];
+  // Scan one network at a time to stay within edge function CPU limits
+  const NETWORK_ROTATION = ['ethereum', 'arbitrum', 'polygon', 'optimism', 'base', 'bsc', 'avalanche'];
   
   // Store full backend opportunity data for execution
   const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
