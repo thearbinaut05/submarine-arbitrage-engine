@@ -737,9 +737,9 @@ serve(async (req: Request) => {
     }
 
     const scanDuration = Date.now() - startTime;
-    const networkStats = validNetworks.map((network, i) => ({
+    const networkStats = networksToScan.map((network) => ({
       network,
-      opportunitiesFound: scanResults[i].length,
+      opportunitiesFound: allOpportunities.filter(o => o.sourceNetwork === network).length,
       blockTime: BLOCK_TIMES[network],
     }));
 
