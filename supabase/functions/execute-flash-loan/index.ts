@@ -621,10 +621,10 @@ serve(async (req) => {
       if (testBigInt <= 0n) {
         throw new Error('Amount must be positive');
       }
-    } catch (e) {
+    } catch (e: unknown) {
       return new Response(JSON.stringify({
         success: false,
-        error: `Invalid amountIn format: ${e.message}`,
+        error: `Invalid amountIn format: ${(e as Error).message}`,
         received: rawAmountIn,
         hint: 'amountIn must be a valid integer string (e.g., "1000000000000000000" for 1 ETH)',
       }), {
