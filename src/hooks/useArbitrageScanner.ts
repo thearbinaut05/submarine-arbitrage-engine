@@ -229,11 +229,11 @@ export function useArbitrageScanner() {
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
     scanGroupIndexRef.current = 0;
-    scanWithBackend(NETWORK_GROUPS[0]);
+    scanWithBackend([NETWORK_ROTATION[0]]);
 
     intervalRef.current = setInterval(() => {
-      scanGroupIndexRef.current = (scanGroupIndexRef.current + 1) % NETWORK_GROUPS.length;
-      scanWithBackend(NETWORK_GROUPS[scanGroupIndexRef.current]);
+      scanGroupIndexRef.current = (scanGroupIndexRef.current + 1) % NETWORK_ROTATION.length;
+      scanWithBackend([NETWORK_ROTATION[scanGroupIndexRef.current]]);
     }, config.scanInterval);
   }, [config.scanInterval, scanWithBackend]);
 
