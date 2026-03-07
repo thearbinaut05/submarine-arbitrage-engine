@@ -198,43 +198,49 @@ export function useRealArbitrage(
   const startScanning = useCallback(async () => {
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
-    // Scan all 7 networks
-    const allNetworks = ['ethereum', 'arbitrum', 'polygon', 'bsc', 'optimism', 'base', 'avalanche'];
+    // Scan one network at a time to stay within edge function CPU limits
+    const networkRotation = ['ethereum', 'arbitrum', 'polygon', 'optimism', 'base', 'bsc', 'avalanche'];
+    let groupIndex = 0;
+    // Accumulate opportunities across rotations
+    const accumulatedOpps = new Map<string, ArbitrageOpportunity>();
 
     try {
-      // Initial scan
-      const newOpportunities = await scanNetworks(allNetworks);
+      // Initial scan - first network
+      const newOpportunities = await scanNetworks([networkRotation[0]]);
+      for (const opp of newOpportunities) accumulatedOpps.set(opp.id, opp);
       
-      // Merge with executing and completed opportunities that should persist
       const executingOpps = Array.from(executingOpportunitiesRef.current.values());
-      const completedOpps = Array.from(completedOpportunitiesRef.current.values());
-      
-      // Combine: new opportunities + executing (in progress) + completed (for history)
-      // Don't add completed to the main list to avoid clutter, but keep them tracked
-      const allOpportunities = [
-        ...newOpportunities,
-        ...executingOpps,
-      ];
 
       setState(prev => ({
         ...prev,
-        opportunities: allOpportunities.slice(0, 100),
+        opportunities: [...newOpportunities, ...executingOpps].slice(0, 100),
         lastScanTime: Date.now(),
       }));
 
-      // Continuous scanning every 30 seconds (edge function takes ~10s)
+      // Rotate through networks every 15 seconds
       intervalRef.current = setInterval(async () => {
-        const scanned = await scanNetworks(allNetworks);
+        groupIndex = (groupIndex + 1) % networkRotation.length;
+        const scanned = await scanNetworks([networkRotation[groupIndex]]);
         
-        // Get current executing opportunities to preserve
+        // Update accumulated opportunities (replace old ones from same network group)
+        for (const opp of scanned) accumulatedOpps.set(opp.id, opp);
+        
+        // Remove stale opportunities (older than 2 minutes)
+        const cutoff = Date.now() - 120000;
+        for (const [id, opp] of accumulatedOpps) {
+          if (opp.timestamp < cutoff) accumulatedOpps.delete(id);
+        }
+        
         const currentExecuting = Array.from(executingOpportunitiesRef.current.values());
+        const allOpps = [...Array.from(accumulatedOpps.values()), ...currentExecuting]
+          .sort((a, b) => b.netProfit - a.netProfit);
         
         setState(prev => ({
           ...prev,
-          opportunities: [...scanned, ...currentExecuting].slice(0, 100),
+          opportunities: allOpps.slice(0, 100),
           lastScanTime: Date.now(),
         }));
-      }, 30000); // 30 second interval to avoid WORKER_LIMIT
+      }, 15000);
     } catch (error) {
       console.error('Scanning error:', error);
       setState(prev => ({

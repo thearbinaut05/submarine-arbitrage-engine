@@ -8,52 +8,39 @@
 export const RPC_ENDPOINTS: Record<string, string[]> = {
   ethereum: [
     'https://eth.llamarpc.com',
-    'https://rpc.ankr.com/eth',
     'https://ethereum.publicnode.com',
     'https://1rpc.io/eth',
     'https://cloudflare-eth.com',
   ],
   arbitrum: [
     'https://arb1.arbitrum.io/rpc',
-    'https://rpc.ankr.com/arbitrum',
     'https://arbitrum.publicnode.com',
     'https://1rpc.io/arb',
-    'https://arbitrum-one-rpc.publicnode.com',
   ],
   polygon: [
     'https://polygon-bor-rpc.publicnode.com',
-    'https://rpc.ankr.com/polygon',
     'https://polygon.llamarpc.com',
     'https://1rpc.io/matic',
-    'https://polygon-mainnet.public.blastapi.io',
   ],
   bsc: [
     'https://bsc-dataseed1.binance.org',
     'https://bsc-dataseed2.binance.org',
-    'https://rpc.ankr.com/bsc',
     'https://bsc.publicnode.com',
-    'https://bsc-dataseed3.binance.org',
   ],
   optimism: [
     'https://mainnet.optimism.io',
-    'https://rpc.ankr.com/optimism',
     'https://optimism.publicnode.com',
     'https://1rpc.io/op',
-    'https://optimism-mainnet.public.blastapi.io',
   ],
   base: [
     'https://mainnet.base.org',
     'https://base.publicnode.com',
     'https://1rpc.io/base',
-    'https://base.llamarpc.com',
-    'https://base-mainnet.public.blastapi.io',
   ],
   avalanche: [
     'https://api.avax.network/ext/bc/C/rpc',
-    'https://rpc.ankr.com/avalanche',
     'https://avalanche.publicnode.com',
     'https://1rpc.io/avax/c',
-    'https://avalanche-c-chain.publicnode.com',
   ],
 };
 
@@ -536,271 +523,69 @@ export const TOKEN_ADDRESSES: Record<string, Record<string, {
 };
 
 // ============================================================
-// EXPANDED TOKEN PAIRS - 120+ pairs per network for maximum coverage
+// HIGH-LIQUIDITY TOKEN PAIRS - Top 15 per network for fast scanning
 // ============================================================
 export const PRIORITY_PAIRS: Record<string, [string, string][]> = {
   ethereum: [
-    // Core stable/ETH pairs - expanded
-    ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH', 'DAI'], ['WETH', 'FRAX'],
-    ['WETH', 'LUSD'], ['WETH', 'GUSD'],
-    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDT', 'DAI'], ['DAI', 'FRAX'],
-    ['USDC', 'FRAX'], ['USDT', 'FRAX'], ['USDC', 'LUSD'], ['DAI', 'LUSD'],
-    ['USDT', 'LUSD'], ['FRAX', 'LUSD'],
-    // Stable-ETH variations (bridged tokens)
-    ['WETH', 'USDC.e'], ['WETH', 'USDT.e'], ['WETH', 'DAI.e'],
-    ['USDC.e', 'USDC'], ['USDC.e', 'USDT'], ['USDC.e', 'DAI'],
-    ['USDT.e', 'USDC'], ['USDT.e', 'USDT'], ['USDT.e', 'DAI'],
-    ['DAI.e', 'USDC'], ['DAI.e', 'USDT'], ['DAI.e', 'DAI'],
-    // BTC pairs
-    ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'DAI'],
-    ['renBTC', 'WETH'], ['renBTC', 'USDC'],
-    // DeFi Blue chips
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDT'], ['LINK', 'DAI'],
-    ['UNI', 'WETH'], ['UNI', 'USDC'], ['UNI', 'USDT'],
-    ['AAVE', 'WETH'], ['AAVE', 'USDC'], ['AAVE', 'DAI'],
-    ['CRV', 'WETH'], ['CRV', 'USDC'], ['CRV', 'DAI'],
-    ['LDO', 'WETH'], ['LDO', 'USDC'], ['LDO', 'DAI'],
-    ['MKR', 'WETH'], ['MKR', 'DAI'], ['MKR', 'USDC'],
-    ['COMP', 'WETH'], ['COMP', 'USDC'],
-    ['SNX', 'WETH'], ['SNX', 'USDC'],
-    ['ENS', 'WETH'], ['ENS', 'USDC'],
-    ['LDO', 'STETH'], ['LDO', 'WSTETH'],
-    // LSDs
+    ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH', 'DAI'],
+    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDT', 'DAI'],
+    ['WBTC', 'WETH'], ['WBTC', 'USDC'],
+    ['LINK', 'WETH'], ['UNI', 'WETH'], ['AAVE', 'WETH'],
     ['stETH', 'WETH'], ['wstETH', 'WETH'], ['rETH', 'WETH'], ['cbETH', 'WETH'],
-    ['stETH', 'USDC'], ['wstETH', 'USDC'], ['rETH', 'USDC'], ['cbETH', 'USDC'],
-    ['stETH', 'USDT'], ['wstETH', 'USDT'],
-    // Popular tokens - expanded
-    ['SHIB', 'WETH'], ['PEPE', 'WETH'], ['APE', 'WETH'],
-    ['SHIB', 'USDC'], ['PEPE', 'USDC'], ['APE', 'USDC'],
-    ['DOGE', 'WETH'], ['DOGE', 'USDC'],
-    // Layer 2 tokens
-    ['MATIC', 'WETH'], ['MATIC', 'USDC'], ['ARB', 'WETH'], ['ARB', 'USDC'],
-    ['OP', 'WETH'], ['OP', 'USDC'],
-    // Cross pairs - DeFi
-    ['LINK', 'UNI'], ['AAVE', 'CRV'], ['MKR', 'AAVE'], ['MKR', 'CRV'],
-    ['COMP', 'AAVE'], ['COMP', 'MKR'],
-    ['SNX', 'LDO'], ['CRV', 'LDO'],
-    // More pairs for variety
-    ['YFI', 'WETH'], ['YFI', 'USDC'],
-    ['BAT', 'WETH'], ['BAT', 'USDC'],
-    ['ZRX', 'WETH'], ['ZRX', 'USDC'],
-    ['MANA', 'WETH'], ['MANA', 'USDC'],
-    ['SAND', 'WETH'], ['SAND', 'USDC'],
-    ['ENJ', 'WETH'], ['ENJ', 'USDC'],
   ],
   arbitrum: [
-    // Core pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDC.e'], ['WETH', 'USDT'], ['WETH', 'DAI'],
-    ['WETH', 'FRAX'],
-    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT'], ['USDC', 'USDC.e'],
-    ['USDT', 'DAI'], ['USDC.e', 'DAI'], ['USDC', 'FRAX'], ['DAI', 'FRAX'],
-    ['USDC.e', 'FRAX'], ['USDT', 'FRAX'],
-    // Stable pairs variations
-    ['USDC', 'LUSD'], ['USDC.e', 'LUSD'], ['DAI', 'LUSD'],
-    // BTC pairs
-    ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'USDC.e'],
-    ['WBTC', 'DAI'],
-    // ARB ecosystem
-    ['ARB', 'WETH'], ['ARB', 'USDC'], ['ARB', 'USDC.e'], ['ARB', 'USDT'],
-    ['ARB', 'DAI'], ['ARB', 'FRAX'],
-    ['GMX', 'WETH'], ['GMX', 'USDC'], ['GMX', 'USDC.e'], ['GMX', 'ARB'],
-    ['GMX', 'DAI'],
-    ['MAGIC', 'WETH'], ['MAGIC', 'USDC'], ['MAGIC', 'USDC.e'], ['MAGIC', 'ARB'],
-    ['MAGIC', 'DAI'],
-    ['GRAIL', 'WETH'], ['GRAIL', 'USDC'], ['GRAIL', 'USDC.e'],
-    ['RDNT', 'WETH'], ['RDNT', 'USDC'], ['RDNT', 'USDC.e'], ['RDNT', 'ARB'],
-    ['PENDLE', 'WETH'], ['PENDLE', 'USDC'], ['PENDLE', 'USDC.e'], ['PENDLE', 'ARB'],
-    ['PENDLE', 'WETH'],
-    // DeFi tokens
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDC.e'], ['LINK', 'ARB'],
-    ['UNI', 'WETH'], ['UNI', 'USDC'], ['UNI', 'USDC.e'],
-    ['SUSHI', 'WETH'], ['SUSHI', 'USDC'], ['SUSHI', 'USDC.e'],
-    ['JOE', 'WETH'], ['JOE', 'USDC'], ['JOE', 'ARB'],
-    ['STG', 'WETH'], ['STG', 'USDC'], ['STG', 'ARB'],
-    // LSDs
-    ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
-    ['wstETH', 'USDC.e'], ['rETH', 'USDC.e'],
-    // More L2 ecosystem tokens
-    ['DYDX', 'WETH'], ['DYDX', 'USDC'],
-    ['PERP', 'WETH'], ['PERP', 'USDC'], ['PERP', 'ARB'],
-    ['GNS', 'WETH'], ['GNS', 'USDC'],
-    // Cross pairs
-    ['ARB', 'GMX'], ['ARB', 'MAGIC'], ['GMX', 'MAGIC'],
-    ['ARB', 'LINK'], ['ARB', 'PENDLE'],
-    ['GMX', 'RDNT'], ['MAGIC', 'GRAIL'],
+    ['USDC', 'USDC.e'], ['USDC', 'USDT'], ['USDC', 'DAI'],
+    ['WBTC', 'WETH'], ['ARB', 'WETH'], ['ARB', 'USDC'],
+    ['GMX', 'WETH'], ['GMX', 'USDC'],
+    ['LINK', 'WETH'], ['wstETH', 'WETH'], ['rETH', 'WETH'],
   ],
   polygon: [
-    // MATIC pairs - expanded
-    ['WMATIC', 'USDC'], ['WMATIC', 'USDC.e'], ['WMATIC', 'USDT'], ['WMATIC', 'DAI'],
-    ['WMATIC', 'WETH'], ['WMATIC', 'WBTC'],
-    ['WMATIC', 'LINK'], ['WMATIC', 'AAVE'], ['WMATIC', 'CRV'],
-    ['WMATIC', 'QUICK'], ['WMATIC', 'SUSHI'], ['WMATIC', 'GRT'],
-    // Core pairs - expanded
-    ['WETH', 'USDC'], ['WETH', 'USDC.e'], ['WETH', 'USDT'], ['WETH', 'DAI'],
-    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT'], ['USDC', 'USDC.e'],
-    ['USDT', 'DAI'], ['USDC.e', 'DAI'],
-    // Stable variations
-    ['USDC', 'FRAX'], ['USDC.e', 'FRAX'], ['DAI', 'FRAX'],
-    // BTC
-    ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'WMATIC'],
-    ['WBTC', 'DAI'], ['WBTC', 'USDC.e'],
-    // DeFi
-    ['LINK', 'WETH'], ['LINK', 'WMATIC'], ['LINK', 'USDC'], ['LINK', 'USDC.e'],
-    ['AAVE', 'WETH'], ['AAVE', 'WMATIC'], ['AAVE', 'USDC'], ['AAVE', 'DAI'],
-    ['CRV', 'WETH'], ['CRV', 'WMATIC'], ['CRV', 'USDC'],
-    ['BAL', 'WETH'], ['BAL', 'WMATIC'],
-    ['QUICK', 'WMATIC'], ['QUICK', 'WETH'], ['QUICK', 'USDC'], ['QUICK', 'DAI'],
-    ['SUSHI', 'WETH'], ['SUSHI', 'WMATIC'], ['SUSHI', 'USDC'], ['SUSHI', 'DAI'],
-    ['GRT', 'WETH'], ['GRT', 'WMATIC'], ['GRT', 'USDC'],
-    ['UNI', 'WETH'], ['UNI', 'WMATIC'], ['UNI', 'USDC'],
-    // Metaverse
-    ['SAND', 'WMATIC'], ['SAND', 'WETH'], ['SAND', 'USDC'],
-    ['MANA', 'WMATIC'], ['MANA', 'WETH'], ['MANA', 'USDC'],
-    // LSDs
-    ['stMATIC', 'WMATIC'], ['MaticX', 'WMATIC'], ['stMATIC', 'USDC'],
-    ['stMATIC', 'WETH'], ['MaticX', 'WETH'],
-    // Cross pairs
-    ['LINK', 'AAVE'], ['LINK', 'CRV'], ['QUICK', 'SUSHI'],
-    ['CRV', 'AAVE'], ['CRV', 'BAL'],
-    ['GRT', 'LINK'], ['GRT', 'UNI'],
+    ['WMATIC', 'USDC'], ['WMATIC', 'USDT'], ['WMATIC', 'WETH'],
+    ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH', 'DAI'],
+    ['USDC', 'USDT'], ['USDC', 'DAI'],
+    ['WBTC', 'WETH'], ['WBTC', 'USDC'],
+    ['LINK', 'WETH'], ['AAVE', 'WETH'],
+    ['QUICK', 'WMATIC'], ['stMATIC', 'WMATIC'], ['MaticX', 'WMATIC'],
   ],
   bsc: [
-    // BNB pairs - expanded
-    ['WBNB', 'USDT'], ['WBNB', 'BUSD'], ['WBNB', 'USDC'], ['WBNB', 'DAI'],
-    ['WBNB', 'ETH'], ['WBNB', 'BTCB'],
-    ['WBNB', 'CAKE'], ['WBNB', 'XVS'], ['WBNB', 'LINK'],
-    ['WBNB', 'DOT'], ['WBNB', 'ADA'], ['WBNB', 'XRP'],
-    // Stable pairs - expanded
-    ['USDT', 'BUSD'], ['USDC', 'BUSD'], ['USDT', 'USDC'], ['DAI', 'BUSD'],
-    ['TUSD', 'BUSD'], ['TUSD', 'USDT'], ['TUSD', 'USDC'],
-    ['FRAX', 'BUSD'], ['FRAX', 'USDT'],
-    // BTC/ETH - expanded
-    ['BTCB', 'USDT'], ['BTCB', 'BUSD'], ['BTCB', 'USDC'], ['BTCB', 'ETH'],
-    ['BTCB', 'WBNB'], ['BTCB', 'DAI'],
-    ['ETH', 'USDT'], ['ETH', 'BUSD'], ['ETH', 'USDC'], ['ETH', 'DAI'],
-    // DEX tokens - expanded
-    ['CAKE', 'WBNB'], ['CAKE', 'USDT'], ['CAKE', 'BUSD'], ['CAKE', 'USDC'],
-    ['CAKE', 'ETH'], ['CAKE', 'BTCB'], ['CAKE', 'DAI'],
-    ['BAKE', 'WBNB'], ['BANANA', 'WBNB'], ['AUTO', 'WBNB'],
-    // DeFi - expanded
-    ['XVS', 'WBNB'], ['XVS', 'USDT'], ['XVS', 'BUSD'], ['XVS', 'USDC'],
-    ['XVS', 'CAKE'],
-    ['ALPACA', 'WBNB'], ['ALPACA', 'BUSD'], ['ALPACA', 'USDC'],
-    // L1 tokens - expanded
-    ['DOT', 'WBNB'], ['DOT', 'BUSD'], ['DOT', 'USDT'], ['DOT', 'ETH'],
-    ['ADA', 'WBNB'], ['ADA', 'BUSD'], ['ADA', 'USDT'], ['ADA', 'ETH'],
-    ['XRP', 'WBNB'], ['XRP', 'BUSD'], ['XRP', 'USDT'], ['XRP', 'ETH'],
-    ['LINK', 'WBNB'], ['LINK', 'BUSD'], ['LINK', 'USDT'], ['LINK', 'ETH'],
-    ['UNI', 'WBNB'], ['UNI', 'BUSD'], ['UNI', 'USDT'],
-    // More tokens
-    ['MATIC', 'WBNB'], ['MATIC', 'BUSD'],
-    ['SOL', 'WBNB'], ['SOL', 'BUSD'],
-    // Cross pairs
-    ['CAKE', 'XVS'], ['DOT', 'ADA'],
-    ['ALPACA', 'CAKE'], ['XVS', 'ALPACA'],
+    ['WBNB', 'USDT'], ['WBNB', 'BUSD'], ['WBNB', 'USDC'],
+    ['USDT', 'BUSD'], ['USDC', 'BUSD'], ['USDT', 'USDC'],
+    ['BTCB', 'WBNB'], ['BTCB', 'USDT'], ['ETH', 'WBNB'], ['ETH', 'USDT'],
+    ['CAKE', 'WBNB'], ['CAKE', 'USDT'],
+    ['LINK', 'WBNB'], ['DOT', 'WBNB'], ['XRP', 'WBNB'],
   ],
   optimism: [
-    // Core pairs - expanded
-    ['WETH', 'USDC'], ['WETH', 'USDC.e'], ['WETH', 'USDT'], ['WETH', 'DAI'],
-    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT'], ['USDC', 'USDC.e'],
-    ['USDT', 'DAI'], ['USDC', 'sUSD'], ['USDT', 'sUSD'],
-    ['USDC', 'FRAX'], ['USDC.e', 'FRAX'], ['DAI', 'FRAX'],
-    // OP ecosystem - expanded
-    ['OP', 'WETH'], ['OP', 'USDC'], ['OP', 'USDC.e'], ['OP', 'USDT'],
-    ['OP', 'DAI'], ['OP', 'sUSD'],
-    ['VELO', 'WETH'], ['VELO', 'USDC'], ['VELO', 'USDC.e'], ['VELO', 'OP'],
-    ['VELO', 'DAI'],
-    // BTC - expanded
-    ['WBTC', 'WETH'], ['WBTC', 'USDC'], ['WBTC', 'USDT'], ['WBTC', 'USDC.e'],
-    // DeFi - expanded
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDC.e'], ['LINK', 'OP'],
-    ['SNX', 'WETH'], ['SNX', 'USDC'], ['SNX', 'USDC.e'], ['SNX', 'OP'],
-    ['AAVE', 'WETH'], ['AAVE', 'USDC'], ['AAVE', 'OP'],
-    ['CRV', 'WETH'], ['CRV', 'USDC'], ['CRV', 'OP'],
-    ['PERP', 'WETH'], ['PERP', 'USDC'], ['PERP', 'OP'], ['PERP', 'DAI'],
-    ['LDO', 'WETH'], ['LDO', 'USDC'], ['LDO', 'OP'],
-    // LSDs - expanded
-    ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
-    ['wstETH', 'USDC.e'], ['rETH', 'USDC.e'],
-    // Synths - expanded
-    ['sUSD', 'DAI'], ['sUSD', 'FRAX'], ['sUSD', 'USDC'], ['sUSD', 'USDC.e'],
-    // Cross pairs
-    ['OP', 'VELO'], ['SNX', 'OP'], ['OP', 'LDO'],
-    ['SNX', 'VELO'], ['AAVE', 'CRV'],
+    ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH', 'DAI'],
+    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC', 'sUSD'],
+    ['OP', 'WETH'], ['OP', 'USDC'],
+    ['SNX', 'WETH'], ['SNX', 'USDC'], ['SNX', 'OP'],
+    ['AAVE', 'WETH'], ['wstETH', 'WETH'], ['rETH', 'WETH'], ['VELO', 'WETH'],
   ],
   base: [
-    // Core pairs - expanded
     ['WETH', 'USDC'], ['WETH', 'USDbC'], ['WETH', 'DAI'],
-    ['USDC', 'USDbC'], ['USDC', 'DAI'], ['USDbC', 'DAI'],
-    ['USDC', 'FRAX'], ['USDbC', 'FRAX'],
-    // LSDs - expanded
-    ['cbETH', 'WETH'], ['cbETH', 'USDC'], ['cbETH', 'USDbC'],
-    ['wstETH', 'WETH'], ['rETH', 'WETH'], ['wstETH', 'USDC'], ['rETH', 'USDC'],
-    ['wstETH', 'USDbC'], ['rETH', 'USDbC'], ['cbETH', 'wstETH'],
-    // Base ecosystem - expanded
-    ['AERO', 'WETH'], ['AERO', 'USDC'], ['AERO', 'USDbC'], ['AERO', 'DAI'],
-    ['BRETT', 'WETH'], ['BRETT', 'USDC'], ['BRETT', 'USDbC'],
-    ['DEGEN', 'WETH'], ['DEGEN', 'USDC'], ['DEGEN', 'USDbC'],
-    ['TOSHI', 'WETH'], ['TOSHI', 'USDC'], ['TOSHI', 'USDbC'],
-    ['WELL', 'WETH'], ['WELL', 'USDC'], ['WELL', 'USDbC'],
-    // DeFi - expanded
-    ['COMP', 'WETH'], ['SNX', 'WETH'], ['COMP', 'USDC'], ['SNX', 'USDC'],
-    ['COMP', 'USDbC'], ['SNX', 'USDbC'],
-    ['LINK', 'WETH'], ['LINK', 'USDC'], ['LINK', 'USDbC'],
-    ['UNI', 'WETH'], ['UNI', 'USDC'],
-    // More Base ecosystem tokens
-    ['MOG', 'WETH'], ['MOG', 'USDC'],
-    ['BASED', 'WETH'], ['BASED', 'USDC'],
-    ['STONKS', 'WETH'], ['STONKS', 'USDC'],
-    // Cross pairs
-    ['AERO', 'cbETH'], ['BRETT', 'DEGEN'],
-    ['AERO', 'wstETH'], ['AERO', 'rETH'],
-    ['cbETH', 'wstETH'], ['cbETH', 'rETH'],
+    ['USDC', 'USDbC'], ['USDC', 'DAI'],
+    ['cbETH', 'WETH'], ['cbETH', 'USDC'],
+    ['wstETH', 'WETH'], ['rETH', 'WETH'],
+    ['AERO', 'WETH'], ['AERO', 'USDC'],
+    ['COMP', 'WETH'], ['SNX', 'WETH'],
+    ['BRETT', 'WETH'], ['DEGEN', 'WETH'],
   ],
   avalanche: [
-    // AVAX pairs - expanded
-    ['WAVAX', 'USDC'], ['WAVAX', 'USDC.e'], ['WAVAX', 'USDT'], ['WAVAX', 'USDT.e'],
-    ['WAVAX', 'DAI'], ['WAVAX', 'WETH'], ['WAVAX', 'WETH.e'],
-    ['WAVAX', 'WBTC'], ['WAVAX', 'WBTC.e'], ['WAVAX', 'LINK'],
-    ['WAVAX', 'AAVE'], ['WAVAX', 'JOE'], ['WAVAX', 'GMX'],
-    // Stable pairs - expanded
-    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC.e', 'USDT.e'], ['USDC', 'USDC.e'],
-    ['USDT', 'USDT.e'], ['USDT', 'DAI'], ['DAI', 'DAI.e'],
-    ['USDC', 'FRAX'], ['USDC.e', 'FRAX'],
-    // BTC pairs - expanded
-    ['WBTC', 'WAVAX'], ['WBTC', 'USDC'], ['WBTC.e', 'WAVAX'], ['WBTC', 'WBTC.e'],
-    ['WBTC', 'WETH'], ['WBTC', 'WETH.e'],
-    ['WBTC.e', 'WAVAX'], ['WBTC.e', 'USDC.e'],
-    // ETH pairs - expanded
-    ['WETH', 'USDC'], ['WETH', 'USDT'], ['WETH.e', 'USDC.e'],
-    ['WETH', 'WAVAX'], ['WETH.e', 'WAVAX'],
-    // DEX tokens - expanded
-    ['JOE', 'WAVAX'], ['JOE', 'USDC'], ['JOE', 'USDC.e'], ['JOE', 'USDT'],
-    ['JOE', 'WETH'], ['JOE', 'DAI'],
-    ['PNG', 'WAVAX'], ['PNG', 'USDC'], ['PNG', 'USDC.e'], ['PNG', 'WETH'],
-    ['QI', 'WAVAX'], ['QI', 'USDC'], ['QI', 'USDC.e'],
-    // DeFi - expanded
-    ['LINK', 'WAVAX'], ['LINK', 'USDC'], ['LINK', 'USDC.e'], ['LINK', 'WETH'],
-    ['AAVE', 'WAVAX'], ['AAVE', 'USDC'], ['AAVE', 'USDC.e'], ['AAVE', 'WETH'],
-    ['GMX', 'WAVAX'], ['GMX', 'USDC'], ['GMX', 'USDC.e'], ['GMX', 'WETH'],
-    ['STG', 'WAVAX'], ['STG', 'USDC'], ['STG', 'USDC.e'],
-    // LSDs - expanded
-    ['sAVAX', 'WAVAX'], ['sAVAX', 'USDC'], ['sAVAX', 'USDC.e'],
-    ['sAVAX', 'WETH'], ['sAVAX', 'WETH.e'],
-    // More tokens
-    ['YIELD', 'WAVAX'], ['YIELD', 'USDC'],
-    ['PNG', 'JOE'], ['QI', 'JOE'],
-    // Cross pairs
-    ['JOE', 'PNG'], ['JOE', 'GMX'],
-    ['JOE', 'AAVE'], ['PNG', 'GMX'],
+    ['WAVAX', 'USDC'], ['WAVAX', 'USDT'], ['WAVAX', 'WETH'],
+    ['USDC', 'USDT'], ['USDC', 'DAI'], ['USDC', 'USDC.e'],
+    ['WBTC', 'WAVAX'], ['WETH', 'USDC'],
+    ['JOE', 'WAVAX'], ['JOE', 'USDC'],
+    ['LINK', 'WAVAX'], ['AAVE', 'WAVAX'],
+    ['sAVAX', 'WAVAX'], ['GMX', 'WAVAX'], ['PNG', 'WAVAX'],
   ],
 };
 
 // Scanner optimization settings - Made more lenient to find more opportunities
 export const SCANNER_CONFIG = {
   // Parallel scanning settings
-  maxConcurrentNetworks: 7,
-  maxConcurrentPairs: 20, // Increased for more coverage
+  maxConcurrentNetworks: 3,
+  maxConcurrentPairs: 5, // Reduced to avoid CPU timeout
   
   // Timing settings
   scanIntervalMs: 300, // Faster scanning

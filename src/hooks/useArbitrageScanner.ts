@@ -81,6 +81,10 @@ export function useArbitrageScanner() {
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const scanGroupIndexRef = useRef(0);
+  
+  // Scan one network at a time to stay within edge function CPU limits
+  const NETWORK_ROTATION = ['ethereum', 'arbitrum', 'polygon', 'optimism', 'base', 'bsc', 'avalanche'];
   
   // Store full backend opportunity data for execution
   const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
@@ -113,20 +117,19 @@ export function useArbitrageScanner() {
   };
 
   // Scan using backend edge function
-  const scanWithBackend = useCallback(async () => {
-    // Require Supabase configuration for real scanning
+  const scanWithBackend = useCallback(async (networksToScan?: string[]) => {
     if (!isSupabaseConfigured()) {
-      setScanError('Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY environment variables.');
+      setScanError('Backend not configured.');
       setIsScanning(false);
       return;
     }
 
-    if (!config.networks.length) {
+    const networks = networksToScan || config.networks.slice(0, 3);
+    if (!networks.length) {
       setScanError('Configuration missing');
       return;
     }
 
-    // Cancel any previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -143,10 +146,10 @@ export function useArbitrageScanner() {
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          networks: config.networks,
+          networks,
           minProfitPercent: config.minProfitPercent,
           minProfitUsd: config.minProfitUsd,
-          maxConcurrent: 15,
+          maxConcurrent: 10,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -225,10 +228,12 @@ export function useArbitrageScanner() {
 
   const startScanner = useCallback(() => {
     setConfig(prev => ({ ...prev, isActive: true }));
-    scanWithBackend();
+    scanGroupIndexRef.current = 0;
+    scanWithBackend([NETWORK_ROTATION[0]]);
 
     intervalRef.current = setInterval(() => {
-      scanWithBackend();
+      scanGroupIndexRef.current = (scanGroupIndexRef.current + 1) % NETWORK_ROTATION.length;
+      scanWithBackend([NETWORK_ROTATION[scanGroupIndexRef.current]]);
     }, config.scanInterval);
   }, [config.scanInterval, scanWithBackend]);
 

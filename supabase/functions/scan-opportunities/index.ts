@@ -688,13 +688,20 @@ serve(async (req: Request) => {
       });
     }
 
-    const scanResults = await Promise.all(
-      validNetworks.map(network => scanNetwork(network, minProfitPercent, minProfitUsd))
-    );
+    // Scan networks SEQUENTIALLY to avoid CPU timeout (max 3 per call)
+    const networksToScan = validNetworks.slice(0, 3);
+    const allOpportunities: ArbitrageOpportunity[] = [];
+    
+    for (const network of networksToScan) {
+      try {
+        const opps = await scanNetwork(network, minProfitPercent, minProfitUsd);
+        allOpportunities.push(...opps);
+      } catch (err) {
+        console.error(`Failed to scan ${network}:`, err);
+      }
+    }
 
-    const allOpportunities = scanResults
-      .flat()
-      .sort((a, b) => b.netProfit - a.netProfit);
+    allOpportunities.sort((a, b) => b.netProfit - a.netProfit);
 
     const autoExecuteResults: Array<{
       opportunityId: string;
@@ -730,9 +737,9 @@ serve(async (req: Request) => {
     }
 
     const scanDuration = Date.now() - startTime;
-    const networkStats = validNetworks.map((network, i) => ({
+    const networkStats = networksToScan.map((network) => ({
       network,
-      opportunitiesFound: scanResults[i].length,
+      opportunitiesFound: allOpportunities.filter(o => o.sourceNetwork === network).length,
       blockTime: BLOCK_TIMES[network],
     }));
 
@@ -748,8 +755,8 @@ serve(async (req: Request) => {
         results: autoExecuteResults,
       },
       stats: {
-        scannedNetworks: validNetworks.length,
-        totalPairsScanned: validNetworks.reduce((acc, n) => acc + (PRIORITY_PAIRS[n]?.length || 0), 0),
+        scannedNetworks: networksToScan.length,
+        totalPairsScanned: networksToScan.reduce((acc, n) => acc + (PRIORITY_PAIRS[n]?.length || 0), 0),
         totalOpportunities: allOpportunities.length,
         scanDurationMs: scanDuration,
         timestamp: Date.now(),
