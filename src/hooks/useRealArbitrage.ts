@@ -240,7 +240,7 @@ export function useRealArbitrage(
           opportunities: allOpps.slice(0, 100),
           lastScanTime: Date.now(),
         }));
-      }, 20000);
+      }, 15000);
     } catch (error) {
       console.error('Scanning error:', error);
       setState(prev => ({
