@@ -786,8 +786,8 @@ export const PRIORITY_PAIRS: Record<string, [string, string][]> = {
 // Scanner optimization settings - Made more lenient to find more opportunities
 export const SCANNER_CONFIG = {
   // Parallel scanning settings
-  maxConcurrentNetworks: 7,
-  maxConcurrentPairs: 20, // Increased for more coverage
+  maxConcurrentNetworks: 3,
+  maxConcurrentPairs: 5, // Reduced to avoid CPU timeout
   
   // Timing settings
   scanIntervalMs: 300, // Faster scanning
