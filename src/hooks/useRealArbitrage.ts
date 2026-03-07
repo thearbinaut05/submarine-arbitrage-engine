@@ -217,10 +217,10 @@ export function useRealArbitrage(
         lastScanTime: Date.now(),
       }));
 
-      // Rotate through network groups every 20 seconds
+      // Rotate through networks every 15 seconds
       intervalRef.current = setInterval(async () => {
-        groupIndex = (groupIndex + 1) % networkGroups.length;
-        const scanned = await scanNetworks(networkGroups[groupIndex]);
+        groupIndex = (groupIndex + 1) % networkRotation.length;
+        const scanned = await scanNetworks([networkRotation[groupIndex]]);
         
         // Update accumulated opportunities (replace old ones from same network group)
         for (const opp of scanned) accumulatedOpps.set(opp.id, opp);
