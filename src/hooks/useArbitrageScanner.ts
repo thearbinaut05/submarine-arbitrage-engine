@@ -81,6 +81,14 @@ export function useArbitrageScanner() {
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const scanGroupIndexRef = useRef(0);
+  
+  // Network groups to rotate through (max 3 per call to avoid CPU timeout)
+  const NETWORK_GROUPS = [
+    ['ethereum', 'arbitrum', 'polygon'],
+    ['optimism', 'base', 'avalanche'],
+    ['bsc', 'ethereum', 'optimism'],
+  ];
   
   // Store full backend opportunity data for execution
   const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
