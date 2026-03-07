@@ -755,8 +755,8 @@ serve(async (req: Request) => {
         results: autoExecuteResults,
       },
       stats: {
-        scannedNetworks: validNetworks.length,
-        totalPairsScanned: validNetworks.reduce((acc, n) => acc + (PRIORITY_PAIRS[n]?.length || 0), 0),
+        scannedNetworks: networksToScan.length,
+        totalPairsScanned: networksToScan.reduce((acc, n) => acc + (PRIORITY_PAIRS[n]?.length || 0), 0),
         totalOpportunities: allOpportunities.length,
         scanDurationMs: scanDuration,
         timestamp: Date.now(),
