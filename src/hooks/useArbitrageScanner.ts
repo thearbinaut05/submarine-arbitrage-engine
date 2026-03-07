@@ -121,20 +121,19 @@ export function useArbitrageScanner() {
   };
 
   // Scan using backend edge function
-  const scanWithBackend = useCallback(async () => {
-    // Require Supabase configuration for real scanning
+  const scanWithBackend = useCallback(async (networksToScan?: string[]) => {
     if (!isSupabaseConfigured()) {
-      setScanError('Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY environment variables.');
+      setScanError('Backend not configured.');
       setIsScanning(false);
       return;
     }
 
-    if (!config.networks.length) {
+    const networks = networksToScan || config.networks.slice(0, 3);
+    if (!networks.length) {
       setScanError('Configuration missing');
       return;
     }
 
-    // Cancel any previous request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -151,10 +150,10 @@ export function useArbitrageScanner() {
           'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          networks: config.networks,
+          networks,
           minProfitPercent: config.minProfitPercent,
           minProfitUsd: config.minProfitUsd,
-          maxConcurrent: 15,
+          maxConcurrent: 10,
         }),
         signal: abortControllerRef.current.signal,
       });
