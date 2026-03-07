@@ -198,19 +198,15 @@ export function useRealArbitrage(
   const startScanning = useCallback(async () => {
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
-    // Rotate through network groups to avoid edge function CPU timeout
-    const networkGroups = [
-      ['ethereum', 'arbitrum', 'polygon'],
-      ['optimism', 'base', 'avalanche'],
-      ['bsc', 'ethereum', 'optimism'],
-    ];
+    // Scan one network at a time to stay within edge function CPU limits
+    const networkRotation = ['ethereum', 'arbitrum', 'polygon', 'optimism', 'base', 'bsc', 'avalanche'];
     let groupIndex = 0;
     // Accumulate opportunities across rotations
     const accumulatedOpps = new Map<string, ArbitrageOpportunity>();
 
     try {
-      // Initial scan - first group
-      const newOpportunities = await scanNetworks(networkGroups[0]);
+      // Initial scan - first network
+      const newOpportunities = await scanNetworks([networkRotation[0]]);
       for (const opp of newOpportunities) accumulatedOpps.set(opp.id, opp);
       
       const executingOpps = Array.from(executingOpportunitiesRef.current.values());
