@@ -454,6 +454,8 @@ async function calculateOpportunity(
   const tokenInAmount = tradeAmountUsd / bestBuy.price;
   const amountInWei = BigInt(Math.floor(tokenInAmount * (10 ** tokenInDecimals)));
   
+  // Filter out zero amounts (rounding issue with high-price tokens)
+  if (amountInWei <= 0n) return null;
   const gasUsed = 500000;
   const gasCostGwei = gasUsed * gasPrice;
   const ethPrice = await fetchEthPrice();

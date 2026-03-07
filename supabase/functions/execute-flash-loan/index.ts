@@ -391,8 +391,8 @@ function buildUniswapV3Calldata(
   let amountInBigInt: bigint;
   try {
     amountInBigInt = BigInt(amountIn);
-  } catch (e) {
-    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${e.message}`);
+  } catch (e: unknown) {
+    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${(e as Error).message}`);
   }
   
   // ABI encode the struct: (tokenIn, tokenOut, fee, recipient, deadline, amountIn, amountOutMinimum, sqrtPriceLimitX96)
@@ -443,8 +443,8 @@ function buildV2SwapCalldata(
   let amountInBigInt: bigint;
   try {
     amountInBigInt = BigInt(amountIn);
-  } catch (e) {
-    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${e.message}`);
+  } catch (e: unknown) {
+    throw new Error(`Cannot convert amountIn "${amountIn}" to BigInt: ${(e as Error).message}`);
   }
   
   // Path array: [tokenIn, tokenOut]
@@ -621,10 +621,10 @@ serve(async (req) => {
       if (testBigInt <= 0n) {
         throw new Error('Amount must be positive');
       }
-    } catch (e) {
+    } catch (e: unknown) {
       return new Response(JSON.stringify({
         success: false,
-        error: `Invalid amountIn format: ${e.message}`,
+        error: `Invalid amountIn format: ${(e as Error).message}`,
         received: rawAmountIn,
         hint: 'amountIn must be a valid integer string (e.g., "1000000000000000000" for 1 ETH)',
       }), {

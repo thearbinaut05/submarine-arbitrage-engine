@@ -18,7 +18,7 @@ const NETWORK_MAP: Record<string, Network> = {
 // Default thresholds - using backend edge function
 const DEFAULT_MIN_PROFIT_PERCENT = 0.01;
 const DEFAULT_MIN_PROFIT_USD = 1;
-const DEFAULT_SCAN_INTERVAL = 10000;
+const DEFAULT_SCAN_INTERVAL = 30000;
 
 // Check if Supabase is configured
 const isSupabaseConfigured = (): boolean => {

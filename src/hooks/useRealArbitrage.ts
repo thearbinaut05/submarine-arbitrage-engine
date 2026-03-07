@@ -222,7 +222,7 @@ export function useRealArbitrage(
         lastScanTime: Date.now(),
       }));
 
-      // Continuous scanning every 3 seconds
+      // Continuous scanning every 30 seconds (edge function takes ~10s)
       intervalRef.current = setInterval(async () => {
         const scanned = await scanNetworks(allNetworks);
         
@@ -234,7 +234,7 @@ export function useRealArbitrage(
           opportunities: [...scanned, ...currentExecuting].slice(0, 100),
           lastScanTime: Date.now(),
         }));
-      }, 3000); // 3 second interval
+      }, 30000); // 30 second interval to avoid WORKER_LIMIT
     } catch (error) {
       console.error('Scanning error:', error);
       setState(prev => ({
