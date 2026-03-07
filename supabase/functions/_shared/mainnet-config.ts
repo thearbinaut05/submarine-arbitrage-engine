@@ -8,52 +8,39 @@
 export const RPC_ENDPOINTS: Record<string, string[]> = {
   ethereum: [
     'https://eth.llamarpc.com',
-    'https://rpc.ankr.com/eth',
     'https://ethereum.publicnode.com',
     'https://1rpc.io/eth',
     'https://cloudflare-eth.com',
   ],
   arbitrum: [
     'https://arb1.arbitrum.io/rpc',
-    'https://rpc.ankr.com/arbitrum',
     'https://arbitrum.publicnode.com',
     'https://1rpc.io/arb',
-    'https://arbitrum-one-rpc.publicnode.com',
   ],
   polygon: [
     'https://polygon-bor-rpc.publicnode.com',
-    'https://rpc.ankr.com/polygon',
     'https://polygon.llamarpc.com',
     'https://1rpc.io/matic',
-    'https://polygon-mainnet.public.blastapi.io',
   ],
   bsc: [
     'https://bsc-dataseed1.binance.org',
     'https://bsc-dataseed2.binance.org',
-    'https://rpc.ankr.com/bsc',
     'https://bsc.publicnode.com',
-    'https://bsc-dataseed3.binance.org',
   ],
   optimism: [
     'https://mainnet.optimism.io',
-    'https://rpc.ankr.com/optimism',
     'https://optimism.publicnode.com',
     'https://1rpc.io/op',
-    'https://optimism-mainnet.public.blastapi.io',
   ],
   base: [
     'https://mainnet.base.org',
     'https://base.publicnode.com',
     'https://1rpc.io/base',
-    'https://base.llamarpc.com',
-    'https://base-mainnet.public.blastapi.io',
   ],
   avalanche: [
     'https://api.avax.network/ext/bc/C/rpc',
-    'https://rpc.ankr.com/avalanche',
     'https://avalanche.publicnode.com',
     'https://1rpc.io/avax/c',
-    'https://avalanche-c-chain.publicnode.com',
   ],
 };
 

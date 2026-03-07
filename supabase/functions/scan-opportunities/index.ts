@@ -688,13 +688,20 @@ serve(async (req: Request) => {
       });
     }
 
-    const scanResults = await Promise.all(
-      validNetworks.map(network => scanNetwork(network, minProfitPercent, minProfitUsd))
-    );
+    // Scan networks SEQUENTIALLY to avoid CPU timeout (max 3 per call)
+    const networksToScan = validNetworks.slice(0, 3);
+    const allOpportunities: ArbitrageOpportunity[] = [];
+    
+    for (const network of networksToScan) {
+      try {
+        const opps = await scanNetwork(network, minProfitPercent, minProfitUsd);
+        allOpportunities.push(...opps);
+      } catch (err) {
+        console.error(`Failed to scan ${network}:`, err);
+      }
+    }
 
-    const allOpportunities = scanResults
-      .flat()
-      .sort((a, b) => b.netProfit - a.netProfit);
+    allOpportunities.sort((a, b) => b.netProfit - a.netProfit);
 
     const autoExecuteResults: Array<{
       opportunityId: string;
