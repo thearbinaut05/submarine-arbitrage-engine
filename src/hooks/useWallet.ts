@@ -252,8 +252,9 @@ export function useWallet() {
     setWallet(prev => ({ ...prev, isConnecting: true }));
 
     try {
-      providerRef.current = new ethers.BrowserProvider(window.ethereum);
-      const accounts = await providerRef.current.send('eth_requestAccounts', []);
+      const provider = new ethers.BrowserProvider(window.ethereum);
+      providerRef.current = provider;
+      const accounts = await provider.send('eth_requestAccounts', []);
       const network = await providerRef.current.getNetwork();
       
       const chainId = Number(network.chainId);

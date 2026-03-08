@@ -22,7 +22,6 @@ import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
 import { useWallet, TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
 import { useArbitrageScanner } from '@/hooks/useArbitrageScanner';
-import { useOnChainScanner } from '@/hooks/useOnChainScanner';
 import { Button } from '@/components/ui/button';
 import { ScannerConfig, Network } from '@/types/defi';
 import { ethers } from 'ethers';
@@ -33,22 +32,7 @@ const Index = () => {
   const [isConnecting, setIsConnecting] = useState(false);
   const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances } = useWallet();
 
-  // Get signer from wallet for transactions
-  const getSigner = useCallback(async () => {
-    if (!wallet.address || !wallet.network) return null;
-    try {
-      if (typeof window === 'undefined' || !window.ethereum) {
-        return null;
-      }
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      return await provider.getSigner();
-    } catch (error) {
-      console.error('Failed to get signer:', error);
-      return null;
-    }
-  }, [wallet.address, wallet.network]);
-
-  // Real arbitrage hook
+  // Real arbitrage hook - primary scanner & executor
   const {
     opportunities: realOpportunities,
     isScanning: realIsScanning,
@@ -59,15 +43,7 @@ const Index = () => {
     executeOpportunity: realExecuteOpportunity,
   } = useRealArbitrage(wallet.address, wallet.network as Network | null, null);
 
-  // On-chain scanner - uses real blockchain data
-  const {
-    opportunities: onChainOpportunities,
-    isScanning: onChainIsScanning,
-    startScanner: startOnChainScan,
-    stopScanner: stopOnChainScan,
-  } = useOnChainScanner();
-
-  // Mock scanner for UI demo (can be replaced with real scanning)
+  // Mock scanner for config UI only (stats tracking)
   const {
     config,
     stats,
@@ -78,59 +54,47 @@ const Index = () => {
     updateConfig,
   } = useArbitrageScanner();
 
-  // Determine if scanner is active (either real or on-chain)
-  const isScanning = realIsScanning || onChainIsScanning || config.isActive;
+  // Use real scanner state
+  const isScanning = realIsScanning || config.isActive;
 
-  // Start/stop scanner functions
+  // Start/stop scanner - only use real scanner
   const handleStartScanning = useCallback(async () => {
-    // Start the REAL scanner that calls Supabase edge functions
     await realStartScanning();
-    
-    // Also start on-chain and mock scanners for additional coverage
-    startOnChainScan(config.networks as Network[]);
-    startScanner();
-  }, [realStartScanning, startOnChainScan, startScanner, config.networks]);
+    startScanner(); // for config.isActive state
+  }, [realStartScanning, startScanner]);
 
   const handleStopScanning = useCallback(() => {
-    // Stop ALL scanners including the real one
     realStopScanning();
-    stopOnChainScan();
     stopScanner();
-  }, [realStopScanning, stopOnChainScan, stopScanner]);
+  }, [realStopScanning, stopScanner]);
 
-  // Combined opportunities (real + on-chain + mock)
-  const combinedOpportunities = [...realOpportunities, ...onChainOpportunities];
+  // Use only real opportunities
+  const combinedOpportunities = realOpportunities;
 
-  // Execute opportunity handler - uses real execution when wallet is connected
+  // Execute opportunity - real execution via edge function + Gelato
   const handleExecute = useCallback(async (id: string) => {
-    // Find the opportunity in real opportunities first
     const opportunity = realOpportunities.find(op => op.id === id);
     
-    if (opportunity && wallet.address) {
-      // Use REAL execution when wallet is connected
+    if (opportunity) {
       try {
         await realExecuteOpportunity(opportunity);
       } catch (error) {
-        console.error('Real execution failed:', error);
-        // Fallback to mock if real fails
-        executeMockOpportunity(id);
+        console.error('Execution failed:', error);
       }
-    } else if (opportunity) {
-      // Wallet not connected, use mock execution
-      executeMockOpportunity(id);
-    } else {
-      // Try mock execution
-      executeMockOpportunity(id);
     }
-  }, [realOpportunities, realExecuteOpportunity, executeMockOpportunity, wallet.address]);
+  }, [realOpportunities, realExecuteOpportunity]);
 
-  // Handle wallet connection
+  // Handle wallet connection with error handling
   const handleConnect = useCallback(async () => {
+    if (typeof window === 'undefined' || !window.ethereum) {
+      alert('Please install MetaMask or another Web3 wallet to connect.');
+      return;
+    }
     setIsConnecting(true);
     try {
       await connect();
     } catch (error) {
-      console.error('Failed to connect:', error);
+      console.error('Failed to connect wallet:', error);
     } finally {
       setIsConnecting(false);
     }
@@ -212,7 +176,7 @@ const Index = () => {
                   <div>
                     <h2 className="text-2xl font-sans font-bold text-foreground">Arbitrage Scanner</h2>
                     <p className="text-muted-foreground mt-1">
-                      Configure and run the arbitrage opportunity scanner across multiple networks
+                      Real-time on-chain scanning across 7 networks with live execution via Gelato relay
                     </p>
                   </div>
                   <div className="flex items-center gap-3">
@@ -422,118 +386,143 @@ const Index = () => {
                             >
                               <Copy className="w-4 h-4" />
                             </Button>
-                            <Button variant="outline" size="sm" onClick={disconnect}>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={disconnect}
+                            >
                               Disconnect
                             </Button>
                           </div>
                         </div>
-                        
-                        <div className="grid grid-cols-2 gap-6">
-                          <div>
-                            <div className="text-xs text-muted-foreground mb-1">
-                              {wallet.network ? wallet.network.charAt(0).toUpperCase() + wallet.network.slice(1) : 'Unknown'} Balance
-                            </div>
-                            <div className="text-4xl font-bold text-foreground">
-                              {parseFloat(wallet.balance).toFixed(4)} <span className="text-lg text-muted-foreground">ETH</span>
-                            </div>
+
+                        {/* Network Info */}
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                          <div className="p-4 rounded-lg bg-muted/30">
+                            <div className="text-xs text-muted-foreground mb-1">Network</div>
+                            <div className="font-medium text-foreground capitalize">{wallet.network || 'Unknown'}</div>
                           </div>
-                          <div className="text-right">
-                            <div className="text-xs text-muted-foreground mb-1">Session Profit</div>
-                            <div className="text-4xl font-bold text-accent">
-                              ${stats.totalProfit.toFixed(2)}
+                          <div className="p-4 rounded-lg bg-muted/30">
+                            <div className="text-xs text-muted-foreground mb-1">Native Balance</div>
+                            <div className="font-medium text-foreground">
+                              {parseFloat(wallet.balance).toFixed(4)} {wallet.network === 'bsc' ? 'BNB' : wallet.network === 'polygon' ? 'MATIC' : 'ETH'}
                             </div>
                           </div>
                         </div>
 
-                        {wallet.lastUpdated && (
-                          <div className="text-xs text-muted-foreground mt-4 pt-4 border-t border-border">
-                            Last updated: {new Date(wallet.lastUpdated).toLocaleString()}
-                          </div>
-                        )}
+                        {/* Token Balances */}
+                        <div>
+                          <h4 className="text-sm font-medium text-foreground mb-3">Token Balances</h4>
+                          {wallet.isLoadingTokens ? (
+                            <div className="flex items-center justify-center py-8">
+                              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                            </div>
+                          ) : wallet.tokens.length > 0 ? (
+                            <div className="space-y-2">
+                              {wallet.tokens.map((token: TokenBalance) => (
+                                <div key={token.address} className="flex items-center justify-between p-3 rounded-lg bg-muted/20 hover:bg-muted/30 transition-colors">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                      <span className="text-xs font-bold text-primary">{token.symbol.slice(0, 2)}</span>
+                                    </div>
+                                    <div>
+                                      <div className="text-sm font-medium text-foreground">{token.symbol}</div>
+                                      <div className="text-xs text-muted-foreground">{token.name}</div>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-sm font-medium text-foreground">{token.balance}</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-center py-6 text-muted-foreground text-sm">
+                              No token balances found on this network
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
 
-                    {/* Network Info */}
+                    {/* Network Switcher */}
                     <div>
-                      <div className="p-6 rounded-xl border border-border bg-card h-full">
-                        <div className="flex items-center gap-2 mb-4">
-                          <Shield className="w-5 h-5 text-primary" />
-                          <span className="font-medium text-foreground">Network Status</span>
-                        </div>
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Current Network</span>
-                            <span className="text-sm font-medium text-foreground capitalize">
-                              {wallet.network || 'Unknown'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Token Support</span>
-                            <span className={cn(
-                              "text-sm font-medium",
-                              wallet.isLoadingTokens ? "text-muted-foreground" : "text-accent"
-                            )}>
-                              {wallet.isLoadingTokens ? 'Loading...' : `${wallet.tokens.length} tokens`}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm text-muted-foreground">Scanner Status</span>
-                            <span className={cn(
-                              "text-sm font-medium flex items-center gap-1",
-                              isScanning ? "text-accent" : "text-muted-foreground"
-                            )}>
-                              {isScanning && (
-                                <motion.div
-                                  className="w-2 h-2 rounded-full bg-accent"
-                                  animate={{ scale: [1, 1.2, 1], opacity: [1, 0.5, 1] }}
-                                  transition={{ duration: 1, repeat: Infinity }}
-                                />
+                      <div className="p-6 rounded-xl border border-border bg-card">
+                        <h4 className="text-sm font-medium text-foreground mb-4">Switch Network</h4>
+                        <div className="space-y-2">
+                          {Object.values(networks).map((net) => (
+                            <button
+                              key={net.id}
+                              onClick={() => switchNetwork(net.id)}
+                              className={cn(
+                                "w-full flex items-center gap-3 p-3 rounded-lg border transition-all text-left",
+                                wallet.network === net.id
+                                  ? "border-primary bg-primary/5"
+                                  : "border-border hover:border-primary/50 hover:bg-muted/30"
                               )}
-                              {isScanning ? 'Active' : 'Idle'}
-                            </span>
-                          </div>
+                            >
+                              <div
+                                className="w-3 h-3 rounded-full"
+                                style={{ backgroundColor: net.color }}
+                              />
+                              <div>
+                                <div className="text-sm font-medium text-foreground">{net.name}</div>
+                                <div className="text-xs text-muted-foreground">Chain ID: {net.chainId}</div>
+                              </div>
+                              {wallet.network === net.id && (
+                                <div className="ml-auto text-xs text-primary font-medium">Active</div>
+                              )}
+                            </button>
+                          ))}
                         </div>
                       </div>
                     </div>
                   </div>
                 )}
+              </div>
+            )}
 
-                {/* Token Holdings */}
-                {wallet.isConnected && wallet.tokens.length > 0 && (
-                  <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-foreground">Token Holdings</h3>
-                    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                      {wallet.tokens.map((token: TokenBalance) => (
-                        <motion.div
-                          key={token.address}
-                          whileHover={{ scale: 1.02 }}
-                          className="p-4 rounded-lg border border-border bg-card hover:border-primary/50 transition-colors"
-                        >
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-2">
-                              <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
-                                {token.symbol.slice(0, 2)}
-                              </div>
-                              <div>
-                                <div className="font-medium text-foreground">{token.symbol}</div>
-                                <div className="text-xs text-muted-foreground">{token.name}</div>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-xl font-mono font-medium text-foreground">
-                              {parseFloat(token.balance).toLocaleString(undefined, {
-                                minimumFractionDigits: token.decimals > 6 ? 2 : 0,
-                                maximumFractionDigits: token.decimals > 6 ? 4 : token.decimals,
-                              })}
-                            </div>
-                            <div className="text-xs text-muted-foreground">{token.symbol}</div>
-                          </div>
-                        </motion.div>
-                      ))}
+            {activeTab === 'settings' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-sans font-bold text-foreground">Settings</h2>
+                    <p className="text-muted-foreground mt-1">
+                      Configure scanner parameters and execution preferences
+                    </p>
+                  </div>
+                </div>
+
+                <div className="max-w-2xl">
+                  <div className="p-6 rounded-xl border border-border bg-card space-y-6">
+                    <div>
+                      <h3 className="font-medium text-foreground mb-2">Scanner Configuration</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Scanner rotates through 7 networks (Ethereum, Arbitrum, Polygon, BSC, Optimism, Base, Avalanche) every 15 seconds per network. 
+                        Execution uses Gelato relay for gasless transactions via free DEX aggregators (Paraswap, KyberSwap, OpenOcean).
+                      </p>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="p-4 rounded-lg bg-muted/30">
+                        <div className="text-xs text-muted-foreground mb-1">Execution Method</div>
+                        <div className="font-medium text-foreground">Gelato SyncFee Relay</div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-muted/30">
+                        <div className="text-xs text-muted-foreground mb-1">MEV Protection</div>
+                        <div className="font-medium text-foreground">Private Mempool</div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-muted/30">
+                        <div className="text-xs text-muted-foreground mb-1">Flash Loan Provider</div>
+                        <div className="font-medium text-foreground">Balancer V2 (0% fee)</div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-muted/30">
+                        <div className="text-xs text-muted-foreground mb-1">Wallet Connected</div>
+                        <div className="font-medium text-foreground">{wallet.isConnected ? 'Yes' : 'No'}</div>
+                      </div>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             )}
           </motion.div>
@@ -544,4 +533,3 @@ const Index = () => {
 };
 
 export default Index;
-
