@@ -19,6 +19,7 @@ import { OpportunityList, OpportunityListSkeleton } from '@/components/terminal/
 import { GaslessTransactionBuilder } from '@/components/terminal/GaslessTransactionBuilder';
 import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
+import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
 import { useWallet, TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
 import { useArbitrageScanner } from '@/hooks/useArbitrageScanner';
