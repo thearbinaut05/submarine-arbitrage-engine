@@ -446,8 +446,8 @@ const Index = () => {
                       </div>
                     </div>
 
-                    {/* Network Switcher */}
-                    <div>
+                    {/* Network Switcher + Embedded Wallet */}
+                    <div className="space-y-6">
                       <div className="p-6 rounded-xl border border-border bg-card">
                         <h4 className="text-sm font-medium text-foreground mb-4">Switch Network</h4>
                         <div className="space-y-2">
@@ -476,6 +476,11 @@ const Index = () => {
                             </button>
                           ))}
                         </div>
+                      </div>
+
+                      {/* Embedded Wallet Panel */}
+                      <div className="p-6 rounded-xl border border-border bg-card">
+                        <EmbeddedWalletPanel connectedWalletAddress={wallet.address} />
                       </div>
                     </div>
                   </div>
