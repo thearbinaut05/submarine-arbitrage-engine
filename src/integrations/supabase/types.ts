@@ -83,6 +83,42 @@ export type Database = {
         }
         Relationships: []
       }
+      embedded_wallets: {
+        Row: {
+          address: string
+          created_at: string
+          encrypted_private_key: string
+          id: string
+          is_active: boolean | null
+          label: string | null
+          network: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          address: string
+          created_at?: string
+          encrypted_private_key: string
+          id?: string
+          is_active?: boolean | null
+          label?: string | null
+          network?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          address?: string
+          created_at?: string
+          encrypted_private_key?: string
+          id?: string
+          is_active?: boolean | null
+          label?: string | null
+          network?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           created_at: string

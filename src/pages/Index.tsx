@@ -19,6 +19,7 @@ import { OpportunityList, OpportunityListSkeleton } from '@/components/terminal/
 import { GaslessTransactionBuilder } from '@/components/terminal/GaslessTransactionBuilder';
 import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
+import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
 import { useWallet, TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
 import { useArbitrageScanner } from '@/hooks/useArbitrageScanner';
@@ -331,7 +332,7 @@ const Index = () => {
                 </div>
               
                 {!wallet.isConnected ? (
-                  <div className="max-w-md mx-auto mt-12">
+                  <div className="max-w-md mx-auto mt-12 space-y-6">
                     <div className="p-8 rounded-xl border border-border bg-card text-center">
                       <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-4">
                         <WalletIcon className="w-10 h-10 text-primary" />
@@ -340,7 +341,7 @@ const Index = () => {
                         Connect Your Wallet
                       </h3>
                       <p className="text-muted-foreground mb-6">
-                        Connect your wallet to view your portfolio, token balances, and manage your DeFi positions.
+                        Connect MetaMask for direct profit routing, or use the built-in embedded wallet below.
                       </p>
                       <Button 
                         onClick={handleConnect} 
@@ -355,10 +356,15 @@ const Index = () => {
                         ) : (
                           <>
                             <WalletIcon className="w-4 h-4 mr-2" />
-                            Connect Wallet
+                            Connect MetaMask
                           </>
                         )}
                       </Button>
+                    </div>
+
+                    {/* Embedded Wallet - available even without MetaMask */}
+                    <div className="p-6 rounded-xl border border-border bg-card">
+                      <EmbeddedWalletPanel connectedWalletAddress={null} />
                     </div>
                   </div>
                 ) : (
@@ -445,8 +451,8 @@ const Index = () => {
                       </div>
                     </div>
 
-                    {/* Network Switcher */}
-                    <div>
+                    {/* Network Switcher + Embedded Wallet */}
+                    <div className="space-y-6">
                       <div className="p-6 rounded-xl border border-border bg-card">
                         <h4 className="text-sm font-medium text-foreground mb-4">Switch Network</h4>
                         <div className="space-y-2">
@@ -475,6 +481,11 @@ const Index = () => {
                             </button>
                           ))}
                         </div>
+                      </div>
+
+                      {/* Embedded Wallet Panel */}
+                      <div className="p-6 rounded-xl border border-border bg-card">
+                        <EmbeddedWalletPanel connectedWalletAddress={wallet.address} />
                       </div>
                     </div>
                   </div>
