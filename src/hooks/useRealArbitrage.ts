@@ -491,11 +491,12 @@ export function useRealArbitrage(
           network: targetNetwork,
           tokenIn: opportunity.tokenIn,
           tokenOut: opportunity.tokenOut,
-          amountIn: amountIn, // Include amountIn from backend opportunity
+          amountIn: amountIn,
           sourceDex: opportunity.sourceDex,
           targetDex: opportunity.targetDex,
+          walletAddress: walletAddress, // Connected wallet for profit routing
           profitRecipient: walletAddress,
-          minProfit: opportunity.netProfit * 0.8, // 20% slippage protection
+          minProfit: opportunity.netProfit * 0.8,
           isSubmarine: true,
         }),
       });
