@@ -925,9 +925,13 @@ serve(async (req) => {
           gelatoStatusUrl: `https://relay.gelato.digital/tasks/${gelatoResult.taskId}`,
           gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
           executionTimeMs: Date.now() - startTime,
+          profitDestination: {
+            address: walletAddress,
+            source: profitSource,
+          },
           message: aggregatorQuote 
-            ? `🚀 Swap via ${aggregatorQuote.aggregator} (FREE aggregator) + Gelato gasless relay!`
-            : `🚀 Swap via direct DEX router + Gelato gasless relay!`,
+            ? `🚀 Swap via ${aggregatorQuote.aggregator} (FREE aggregator) + Gelato gasless relay! Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`
+            : `🚀 Swap via direct DEX router + Gelato gasless relay! Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
           trade: {
             tokenIn,
             tokenOut,
