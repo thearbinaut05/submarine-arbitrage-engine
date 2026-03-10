@@ -88,7 +88,9 @@ const Index = () => {
   // Handle wallet connection with error handling
   const handleConnect = useCallback(async () => {
     if (typeof window === 'undefined' || !window.ethereum) {
-      alert('Please install MetaMask or another Web3 wallet to connect.');
+      // Instead of alert, show a toast-like message via console and let the embedded wallet handle it
+      console.warn('No MetaMask detected. Use the embedded wallet in the Portfolio tab.');
+      setActiveTab('wallet');
       return;
     }
     setIsConnecting(true);
