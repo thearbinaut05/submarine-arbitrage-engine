@@ -437,7 +437,7 @@ serve(async (req) => {
       default:
         return new Response(JSON.stringify({
           error: `Unknown action: ${action}`,
-          availableActions: ['create', 'get', 'get-all', 'get-private-key', 'get-profit-address'],
+          availableActions: ['create', 'get', 'get-all', 'get-private-key', 'get-profit-address', 'withdraw'],
         }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
