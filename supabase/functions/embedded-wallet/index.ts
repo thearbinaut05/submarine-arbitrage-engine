@@ -290,6 +290,94 @@ serve(async (req) => {
         });
       }
 
+      case 'withdraw': {
+        // Withdraw ETH from embedded wallet to an external address
+        const { toAddress, amount } = body;
+        
+        if (!toAddress || !amount) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'Missing toAddress or amount',
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Validate address format
+        if (!/^0x[0-9a-fA-F]{40}$/.test(toAddress)) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'Invalid destination address',
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Get wallet with encrypted key
+        const { data: withdrawWallet } = await supabase
+          .from('embedded_wallets')
+          .select('address, encrypted_private_key')
+          .eq('user_id', user.id)
+          .eq('network', network)
+          .single();
+
+        if (!withdrawWallet) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'No embedded wallet found for this network',
+          }), {
+            status: 404,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        const rpcUrl = RPC_URLS[network] || RPC_URLS.ethereum;
+        const withdrawPrivateKey = decryptKey(withdrawWallet.encrypted_private_key, encryptionSecret);
+
+        // Use ethers to sign and send the transaction
+        const { ethers } = await import("https://esm.sh/ethers@6.13.4");
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+        const signer = new ethers.Wallet(withdrawPrivateKey, provider);
+
+        // Parse amount to wei
+        const amountWei = ethers.parseEther(amount.toString());
+
+        // Check balance
+        const balance = await provider.getBalance(withdrawWallet.address);
+        if (balance < amountWei) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: `Insufficient balance. Have ${ethers.formatEther(balance)} ETH, need ${amount} ETH`,
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+
+        // Send transaction
+        const tx = await signer.sendTransaction({
+          to: toAddress,
+          value: amountWei,
+        });
+
+        // Wait for confirmation
+        const receipt = await tx.wait(1);
+
+        return new Response(JSON.stringify({
+          success: true,
+          hash: receipt?.hash || tx.hash,
+          from: withdrawWallet.address,
+          to: toAddress,
+          amount,
+          network,
+          message: `Successfully withdrew ${amount} ETH to ${toAddress}`,
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       case 'get-profit-address': {
         // Returns the address to send profits to
         // Priority: connected wallet > embedded wallet
@@ -349,7 +437,7 @@ serve(async (req) => {
       default:
         return new Response(JSON.stringify({
           error: `Unknown action: ${action}`,
-          availableActions: ['create', 'get', 'get-all', 'get-private-key', 'get-profit-address'],
+          availableActions: ['create', 'get', 'get-all', 'get-private-key', 'get-profit-address', 'withdraw'],
         }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },

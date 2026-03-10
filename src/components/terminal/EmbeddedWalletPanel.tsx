@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Wallet, Plus, Copy, Key, RefreshCw, CheckCircle2, Shield, ExternalLink } from 'lucide-react';
+import { Wallet, Plus, Copy, Key, RefreshCw, CheckCircle2, Shield, ExternalLink, Send, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { useEmbeddedWallet, EmbeddedWallet } from '@/hooks/useEmbeddedWallet';
 import { cn } from '@/lib/utils';
 
@@ -28,15 +29,30 @@ const explorerUrls: Record<string, string> = {
   avalanche: 'https://snowtrace.io/address/',
 };
 
+const txExplorerUrls: Record<string, string> = {
+  ethereum: 'https://etherscan.io/tx/',
+  arbitrum: 'https://arbiscan.io/tx/',
+  polygon: 'https://polygonscan.com/tx/',
+  optimism: 'https://optimistic.etherscan.io/tx/',
+  base: 'https://basescan.org/tx/',
+  bsc: 'https://bscscan.com/tx/',
+  avalanche: 'https://snowtrace.io/tx/',
+};
+
 interface EmbeddedWalletPanelProps {
   connectedWalletAddress: string | null;
 }
 
 export function EmbeddedWalletPanel({ connectedWalletAddress }: EmbeddedWalletPanelProps) {
-  const { wallets, isLoading, createWallet, exportPrivateKey, fetchWallets } = useEmbeddedWallet();
+  const { wallets, isLoading, createWallet, exportPrivateKey, withdrawFunds, fetchWallets } = useEmbeddedWallet();
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
   const [showPrivateKey, setShowPrivateKey] = useState<string | null>(null);
   const [creatingNetwork, setCreatingNetwork] = useState<string | null>(null);
+  const [withdrawingNetwork, setWithdrawingNetwork] = useState<string | null>(null);
+  const [withdrawAddress, setWithdrawAddress] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawResult, setWithdrawResult] = useState<{ success: boolean; message: string; hash?: string; network?: string } | null>(null);
+  const [isWithdrawing, setIsWithdrawing] = useState(false);
 
   const handleCopy = async (address: string) => {
     await navigator.clipboard.writeText(address);
@@ -59,8 +75,41 @@ export function EmbeddedWalletPanel({ connectedWalletAddress }: EmbeddedWalletPa
     const key = await exportPrivateKey(network);
     if (key) {
       setShowPrivateKey(key);
-      setTimeout(() => setShowPrivateKey(null), 30000); // Hide after 30s
+      setTimeout(() => setShowPrivateKey(null), 30000);
     }
+  };
+
+  const handleWithdraw = async (network: string) => {
+    if (!withdrawAddress || !withdrawAmount) return;
+    
+    const confirmed = window.confirm(
+      `Send ${withdrawAmount} ETH to ${withdrawAddress} on ${networkLabels[network]}?`
+    );
+    if (!confirmed) return;
+
+    setIsWithdrawing(true);
+    setWithdrawResult(null);
+
+    const result = await withdrawFunds(withdrawAddress, withdrawAmount, network);
+    
+    if (result.success) {
+      setWithdrawResult({
+        success: true,
+        message: result.message || `Sent ${withdrawAmount} ETH`,
+        hash: result.hash,
+        network,
+      });
+      setWithdrawAddress('');
+      setWithdrawAmount('');
+      setWithdrawingNetwork(null);
+    } else {
+      setWithdrawResult({
+        success: false,
+        message: result.error || 'Withdraw failed',
+      });
+    }
+
+    setIsWithdrawing(false);
   };
 
   return (
@@ -90,6 +139,42 @@ export function EmbeddedWalletPanel({ connectedWalletAddress }: EmbeddedWalletPa
           </div>
         </div>
       </div>
+
+      {/* Withdraw Result */}
+      {withdrawResult && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className={cn(
+            "p-3 rounded-lg border",
+            withdrawResult.success 
+              ? "bg-accent/10 border-accent/30" 
+              : "bg-destructive/10 border-destructive/30"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            {withdrawResult.success ? (
+              <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />
+            ) : (
+              <Shield className="w-4 h-4 text-destructive shrink-0" />
+            )}
+            <span className="text-xs text-foreground flex-1">{withdrawResult.message}</span>
+            {withdrawResult.hash && withdrawResult.network && (
+              <a
+                href={`${txExplorerUrls[withdrawResult.network] || txExplorerUrls.ethereum}${withdrawResult.hash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary hover:underline flex items-center gap-1 shrink-0"
+              >
+                View TX <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+            <Button variant="ghost" size="sm" className="h-5 w-5 p-0" onClick={() => setWithdrawResult(null)}>
+              ✕
+            </Button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Private Key Display */}
       {showPrivateKey && (
@@ -123,6 +208,21 @@ export function EmbeddedWalletPanel({ connectedWalletAddress }: EmbeddedWalletPa
               copiedAddress={copiedAddress}
               onCopy={handleCopy}
               onExportKey={handleExportKey}
+              isWithdrawOpen={withdrawingNetwork === wallet.network}
+              onToggleWithdraw={() => {
+                setWithdrawingNetwork(
+                  withdrawingNetwork === wallet.network ? null : wallet.network
+                );
+                setWithdrawResult(null);
+              }}
+              withdrawAddress={withdrawAddress}
+              withdrawAmount={withdrawAmount}
+              onWithdrawAddressChange={setWithdrawAddress}
+              onWithdrawAmountChange={setWithdrawAmount}
+              onWithdraw={() => handleWithdraw(wallet.network)}
+              isWithdrawing={isWithdrawing}
+              connectedWalletAddress={connectedWalletAddress}
+              onSetMaxAmount={() => setWithdrawAmount(wallet.balance || '0')}
             />
           ))}
         </div>
@@ -159,12 +259,34 @@ function WalletRow({
   copiedAddress,
   onCopy,
   onExportKey,
+  isWithdrawOpen,
+  onToggleWithdraw,
+  withdrawAddress,
+  withdrawAmount,
+  onWithdrawAddressChange,
+  onWithdrawAmountChange,
+  onWithdraw,
+  isWithdrawing,
+  connectedWalletAddress,
+  onSetMaxAmount,
 }: {
   wallet: EmbeddedWallet;
   copiedAddress: string | null;
   onCopy: (address: string) => void;
   onExportKey: (network: string) => void;
+  isWithdrawOpen: boolean;
+  onToggleWithdraw: () => void;
+  withdrawAddress: string;
+  withdrawAmount: string;
+  onWithdrawAddressChange: (v: string) => void;
+  onWithdrawAmountChange: (v: string) => void;
+  onWithdraw: () => void;
+  isWithdrawing: boolean;
+  connectedWalletAddress: string | null;
+  onSetMaxAmount: () => void;
 }) {
+  const balance = parseFloat(wallet.balance || '0');
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 5 }}
@@ -176,7 +298,7 @@ function WalletRow({
           {networkLabels[wallet.network] || wallet.network}
         </Badge>
         <span className="text-xs text-muted-foreground font-mono">
-          {parseFloat(wallet.balance || '0').toFixed(4)} ETH
+          {balance.toFixed(4)} ETH
         </span>
       </div>
       <div className="flex items-center gap-2">
@@ -202,8 +324,84 @@ function WalletRow({
           <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => onExportKey(wallet.network)}>
             <Key className="w-3 h-3 text-muted-foreground" />
           </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn("h-6 w-6 p-0", isWithdrawOpen && "text-primary")}
+            onClick={onToggleWithdraw}
+            title="Withdraw funds"
+          >
+            <Send className="w-3 h-3" />
+          </Button>
         </div>
       </div>
+
+      {/* Withdraw Form */}
+      {isWithdrawOpen && (
+        <motion.div
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className="mt-3 pt-3 border-t border-border space-y-2"
+        >
+          <div className="flex items-center gap-2">
+            <Send className="w-3 h-3 text-primary shrink-0" />
+            <span className="text-xs font-medium text-foreground">Withdraw ETH</span>
+          </div>
+          <Input
+            placeholder="Destination address (0x...)"
+            value={withdrawAddress}
+            onChange={(e) => onWithdrawAddressChange(e.target.value)}
+            className="text-xs h-8 font-mono"
+          />
+          {connectedWalletAddress && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-6 px-2 text-primary"
+              onClick={() => onWithdrawAddressChange(connectedWalletAddress)}
+            >
+              Use connected wallet ({connectedWalletAddress.slice(0,6)}...{connectedWalletAddress.slice(-4)})
+            </Button>
+          )}
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Input
+                placeholder="Amount in ETH"
+                type="number"
+                step="0.0001"
+                min="0"
+                value={withdrawAmount}
+                onChange={(e) => onWithdrawAmountChange(e.target.value)}
+                className="text-xs h-8 pr-12"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-0 top-0 h-8 text-xs text-primary px-2"
+                onClick={onSetMaxAmount}
+              >
+                MAX
+              </Button>
+            </div>
+            <Button
+              size="sm"
+              className="h-8 text-xs"
+              onClick={onWithdraw}
+              disabled={isWithdrawing || !withdrawAddress || !withdrawAmount || balance <= 0}
+            >
+              {isWithdrawing ? (
+                <Loader2 className="w-3 h-3 animate-spin mr-1" />
+              ) : (
+                <Send className="w-3 h-3 mr-1" />
+              )}
+              Send
+            </Button>
+          </div>
+          {balance <= 0 && (
+            <p className="text-xs text-muted-foreground">No balance to withdraw</p>
+          )}
+        </motion.div>
+      )}
     </motion.div>
   );
 }

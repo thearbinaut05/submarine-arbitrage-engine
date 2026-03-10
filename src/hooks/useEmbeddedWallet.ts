@@ -101,6 +101,32 @@ export function useEmbeddedWallet() {
     }
   }, [getAuthToken]);
 
+  const withdrawFunds = useCallback(async (toAddress: string, amount: string, network: string = 'ethereum') => {
+    const token = await getAuthToken();
+    if (!token || !SUPABASE_URL) {
+      return { success: false, error: 'Not authenticated' };
+    }
+
+    try {
+      const response = await fetch(`${SUPABASE_URL}/functions/v1/embedded-wallet`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: 'withdraw', toAddress, amount, network }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await fetchWallets(); // Refresh balances
+      }
+      return data;
+    } catch (err) {
+      return { success: false, error: err instanceof Error ? err.message : 'Withdraw failed' };
+    }
+  }, [getAuthToken, fetchWallets]);
+
   // Get the profit address (connected wallet or embedded)
   const getProfitAddress = useCallback(async (connectedWallet: string | null, network: string = 'ethereum') => {
     if (connectedWallet && connectedWallet !== '0x0000000000000000000000000000000000000001') {
@@ -134,6 +160,7 @@ export function useEmbeddedWallet() {
     fetchWallets,
     createWallet,
     exportPrivateKey,
+    withdrawFunds,
     getProfitAddress,
   };
 }
