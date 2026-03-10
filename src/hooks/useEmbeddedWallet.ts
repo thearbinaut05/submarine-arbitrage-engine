@@ -160,6 +160,7 @@ export function useEmbeddedWallet() {
     fetchWallets,
     createWallet,
     exportPrivateKey,
+    withdrawFunds,
     getProfitAddress,
   };
 }
