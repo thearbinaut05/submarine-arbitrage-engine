@@ -2,17 +2,21 @@ import { motion } from 'framer-motion';
 import { Activity, Zap, Shield, TrendingUp } from 'lucide-react';
 import { WalletButton } from './WalletButton';
 import { NetworkSelector } from './NetworkSelector';
-import { useWallet } from '@/hooks/useWallet';
+import { EnhancedWalletState, NETWORKS } from '@/hooks/useWallet';
+import { Network } from '@/types/defi';
 
 interface HeaderProps {
   totalProfit: number;
   successRate: number;
   isScanning: boolean;
+  wallet: EnhancedWalletState;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onSwitchNetwork: (network: Network) => void;
+  onRefreshBalances: () => void;
 }
 
-export function Header({ totalProfit, successRate, isScanning }: HeaderProps) {
-  const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances } = useWallet();
-
+export function Header({ totalProfit, successRate, isScanning, wallet, onConnect, onDisconnect, onSwitchNetwork, onRefreshBalances }: HeaderProps) {
   return (
     <header className="h-16 border-b border-border bg-card/50 backdrop-blur-sm px-6 flex items-center justify-between">
       <div className="flex items-center gap-6">
@@ -65,15 +69,15 @@ export function Header({ totalProfit, successRate, isScanning }: HeaderProps) {
       <div className="flex items-center gap-4">
         <NetworkSelector
           currentNetwork={wallet.network}
-          networks={networks}
-          onSelect={switchNetwork}
+          networks={NETWORKS}
+          onSelect={onSwitchNetwork}
           disabled={!wallet.isConnected}
         />
         <WalletButton
           wallet={wallet}
-          onConnect={connect}
-          onDisconnect={disconnect}
-          onRefresh={wallet.isConnected ? refreshBalances : undefined}
+          onConnect={onConnect}
+          onDisconnect={onDisconnect}
+          onRefresh={wallet.isConnected ? onRefreshBalances : undefined}
         />
       </div>
     </header>
