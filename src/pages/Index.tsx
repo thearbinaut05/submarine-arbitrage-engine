@@ -117,6 +117,11 @@ const Index = () => {
         totalProfit={stats.totalProfit}
         successRate={stats.successRate}
         isScanning={isScanning}
+        wallet={wallet}
+        onConnect={handleConnect}
+        onDisconnect={disconnect}
+        onSwitchNetwork={switchNetwork}
+        onRefreshBalances={refreshBalances}
       />
 
       {/* Main Content */}
