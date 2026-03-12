@@ -807,12 +807,21 @@ async function signAndSendTransaction(
   if (!deployerKey) throw new Error('DEPLOYER_PRIVATE_KEY not configured');
   
   const { keccak_256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha3');
-  const { sign, getPublicKey } = await import('https://esm.sh/@noble/secp256k1@2.1.0');
+  const { hmac } = await import('https://esm.sh/@noble/hashes@1.4.0/hmac');
+  const { sha256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha256');
+  const secp = await import('https://esm.sh/@noble/secp256k1@2.1.0');
+  
+  // Configure hmacSha256Sync required by noble-secp256k1 v2
+  secp.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
+    const h = hmac.create(sha256, k);
+    m.forEach(msg => h.update(msg));
+    return h.digest();
+  };
   
   const keyHex = deployerKey.startsWith('0x') ? deployerKey.slice(2) : deployerKey;
   
   // Derive address
-  const pubKey = getPublicKey(hexToBytes(keyHex), false);
+  const pubKey = secp.getPublicKey(hexToBytes(keyHex), false);
   const addrHash = keccak_256(pubKey.slice(1));
   const fromAddress = '0x' + bytesToHex(addrHash.slice(-20));
   
@@ -862,7 +871,7 @@ async function signAndSendTransaction(
   
   // Hash and sign
   const txHash = keccak_256(unsignedTx);
-  const sig = sign(txHash, hexToBytes(keyHex), { lowS: true });
+  const sig = secp.sign(txHash, hexToBytes(keyHex), { lowS: true });
   
   const r = bigintToBytes(sig.r);
   const s = bigintToBytes(sig.s);
