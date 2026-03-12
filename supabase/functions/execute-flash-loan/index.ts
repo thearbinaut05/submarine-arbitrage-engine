@@ -505,79 +505,6 @@ function getRouterForNetwork(network: string, dexName: string): { router: string
 const FLASHBOTS_RPC = 'https://rpc.flashbots.net';
 
 /**
- * Send a signed transaction directly via RPC.
- * For Ethereum mainnet, uses Flashbots Protect RPC to prevent MEV/frontrunning.
- * For other chains, uses the standard RPC endpoint.
- */
-async function sendDirectTransaction(
-  network: string,
-  chainId: number,
-  to: string,
-  data: string,
-  value: string = '0',
-): Promise<{ txHash: string }> {
-  const deployerKey = Deno.env.get('DEPLOYER_PRIVATE_KEY');
-  if (!deployerKey) {
-    throw new Error('DEPLOYER_PRIVATE_KEY not configured');
-  }
-
-  const rpcs = RPC_ENDPOINTS[network];
-  if (!rpcs?.length) {
-    throw new Error(`No RPC endpoint for network: ${network}`);
-  }
-
-  // Use Flashbots for Ethereum mainnet (MEV protection), standard RPC otherwise
-  const useFlashbots = network === 'ethereum';
-  const rpcUrl = useFlashbots ? FLASHBOTS_RPC : rpcs[0];
-
-  // 1. Get nonce
-  const nonceHex = await rpcCall(rpcs[0], 'eth_getTransactionCount', [getAddressFromKey(deployerKey), 'pending']);
-  const nonce = parseInt(nonceHex, 16);
-
-  // 2. Get gas price
-  const gasPriceHex = await rpcCall(rpcs[0], 'eth_gasPrice', []);
-  const gasPrice = BigInt(gasPriceHex);
-  // Add 10% buffer for faster inclusion
-  const effectiveGasPrice = gasPrice + (gasPrice * 10n / 100n);
-
-  // 3. Estimate gas
-  let gasLimit = 500000n; // Safe default for flash loan txs
-  try {
-    const estimateHex = await rpcCall(rpcs[0], 'eth_estimateGas', [{
-      from: getAddressFromKey(deployerKey),
-      to,
-      data,
-      value: value === '0' ? '0x0' : '0x' + BigInt(value).toString(16),
-    }]);
-    gasLimit = BigInt(estimateHex) * 130n / 100n; // 30% buffer
-  } catch (e) {
-    console.log('Gas estimation failed, using default 500k:', e);
-  }
-
-  // 4. Build raw transaction (legacy tx for maximum compatibility)
-  const rawTx = encodeRawTransaction({
-    nonce,
-    gasPrice: effectiveGasPrice,
-    gasLimit,
-    to,
-    value: BigInt(value || '0'),
-    data,
-    chainId,
-  });
-
-  // 5. Sign the transaction
-  const signedTx = await signTransaction(rawTx, deployerKey, chainId);
-
-  // 6. Send via appropriate RPC
-  console.log(`Sending tx via ${useFlashbots ? 'Flashbots Protect (MEV protected)' : 'standard RPC'} on ${network}`);
-  
-  const txHash = await rpcCall(rpcUrl, 'eth_sendRawTransaction', [signedTx]);
-  
-  console.log(`✅ Transaction sent: ${txHash}`);
-  return { txHash };
-}
-
-/**
  * Simple RPC call helper
  */
 async function rpcCall(rpcUrl: string, method: string, params: any[]): Promise<string> {
@@ -593,64 +520,6 @@ async function rpcCall(rpcUrl: string, method: string, params: any[]): Promise<s
   return json.result;
 }
 
-/**
- * Derive address from private key using keccak256
- */
-function getAddressFromKey(privateKey: string): string {
-  // We need to compute the address from the private key
-  // For now, use a pre-computed approach or fetch from RPC
-  // The deployer address is derived at runtime
-  const key = privateKey.startsWith('0x') ? privateKey.slice(2) : privateKey;
-  // Simple secp256k1 public key derivation is complex without a library
-  // Instead we'll use eth_accounts or store the address
-  // For edge function, we'll compute it using SubtleCrypto
-  throw new Error('Use getDeployerAddress() instead');
-}
-
-/**
- * Get the deployer address by querying the RPC
- */
-let _deployerAddress: string | null = null;
-async function getDeployerAddress(network: string): Promise<string> {
-  if (_deployerAddress) return _deployerAddress;
-  
-  const deployerKey = Deno.env.get('DEPLOYER_PRIVATE_KEY');
-  if (!deployerKey) throw new Error('DEPLOYER_PRIVATE_KEY not configured');
-  
-  // Derive address using keccak256 of public key
-  // Since we can't do secp256k1 natively, we'll use a minimal approach
-  // Import the key and derive
-  const keyHex = deployerKey.startsWith('0x') ? deployerKey.slice(2) : deployerKey;
-  const keyBytes = hexToBytes(keyHex);
-  
-  // We need secp256k1 - use a lightweight approach
-  // For Deno edge functions, use the built-in crypto for signing
-  // We'll get the address from a signed message recovery instead
-  
-  // Alternative: just sign a dummy tx and recover the from address
-  // But simplest: use eth_accounts won't work for raw keys
-  
-  // Use the noble-secp256k1 approach inline
-  // Actually, let's just derive it from the key using the standard method
-  // For now, we'll hardcode the derivation using crypto.subtle for the hash part
-  
-  // The simplest reliable method: compute keccak256 of the uncompressed public key
-  // We need secp256k1 point multiplication which isn't available in SubtleCrypto
-  // So let's import a minimal library
-  const { getPublicKey } = await import('https://esm.sh/@noble/secp256k1@2.1.0');
-  const pubKey = getPublicKey(keyBytes, false); // uncompressed
-  const pubKeyWithoutPrefix = pubKey.slice(1); // remove 0x04 prefix
-  
-  // keccak256 of public key
-  const { keccak_256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha3');
-  const hash = keccak_256(pubKeyWithoutPrefix);
-  
-  // Take last 20 bytes
-  _deployerAddress = '0x' + Array.from(hash.slice(-20)).map(b => b.toString(16).padStart(2, '0')).join('');
-  console.log(`Deployer address: ${_deployerAddress}`);
-  return _deployerAddress;
-}
-
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < hex.length; i += 2) {
@@ -663,53 +532,6 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-/**
- * RLP encode a raw transaction and sign it
- */
-interface RawTx {
-  nonce: number;
-  gasPrice: bigint;
-  gasLimit: bigint;
-  to: string;
-  value: bigint;
-  data: string;
-  chainId: number;
-}
-
-function rlpEncodeLength(len: number): Uint8Array {
-  if (len < 56) return new Uint8Array([0x80 + len]);
-  const hexLen = len.toString(16);
-  const byteLen = hexLen.length / 2 + (hexLen.length % 2 ? 0.5 : 0);
-  const byteLenCeil = Math.ceil(byteLen);
-  const result = new Uint8Array(1 + byteLenCeil);
-  result[0] = 0xb7 + byteLenCeil;
-  for (let i = 0; i < byteLenCeil; i++) {
-    result[byteLenCeil - i] = (len >> (8 * i)) & 0xff;
-  }
-  return result;
-}
-
-function rlpEncodeBytes(data: Uint8Array): Uint8Array {
-  if (data.length === 1 && data[0] < 0x80) return data;
-  if (data.length < 56) {
-    const result = new Uint8Array(1 + data.length);
-    result[0] = 0x80 + data.length;
-    result.set(data, 1);
-    return result;
-  }
-  const lenBytes = rlpEncodeLength(data.length);
-  // For long strings
-  const hexLen = data.length.toString(16);
-  const byteLen = Math.ceil(hexLen.length / 2);
-  const result = new Uint8Array(1 + byteLen + data.length);
-  result[0] = 0xb7 + byteLen;
-  for (let i = 0; i < byteLen; i++) {
-    result[byteLen - i] = (data.length >> (8 * i)) & 0xff;
-  }
-  result.set(data, 1 + byteLen);
-  return result;
-}
-
 function bigintToBytes(val: bigint): Uint8Array {
   if (val === 0n) return new Uint8Array(0);
   const hex = val.toString(16);
@@ -720,6 +542,28 @@ function bigintToBytes(val: bigint): Uint8Array {
 function numberToBytes(val: number): Uint8Array {
   if (val === 0) return new Uint8Array(0);
   return bigintToBytes(BigInt(val));
+}
+
+function rlpEncodeBytes(data: Uint8Array): Uint8Array {
+  if (data.length === 0) {
+    return new Uint8Array([0x80]);
+  }
+  if (data.length === 1 && data[0] < 0x80) return data;
+  if (data.length < 56) {
+    const result = new Uint8Array(1 + data.length);
+    result[0] = 0x80 + data.length;
+    result.set(data, 1);
+    return result;
+  }
+  const hexLen = data.length.toString(16);
+  const byteLen = Math.ceil(hexLen.length / 2);
+  const result = new Uint8Array(1 + byteLen + data.length);
+  result[0] = 0xb7 + byteLen;
+  for (let i = 0; i < byteLen; i++) {
+    result[byteLen - i] = (data.length >> (8 * i)) & 0xff;
+  }
+  result.set(data, 1 + byteLen);
+  return result;
 }
 
 function rlpEncodeList(items: Uint8Array[]): Uint8Array {
@@ -749,52 +593,9 @@ function rlpEncodeList(items: Uint8Array[]): Uint8Array {
   return result;
 }
 
-function encodeRawTransaction(tx: RawTx): Uint8Array {
-  // For EIP-155 signing: [nonce, gasPrice, gasLimit, to, value, data, chainId, 0, 0]
-  const toBytes = hexToBytes(tx.to.slice(2));
-  const dataBytes = tx.data.startsWith('0x') ? hexToBytes(tx.data.slice(2)) : hexToBytes(tx.data);
-  
-  return rlpEncodeList([
-    numberToBytes(tx.nonce),
-    bigintToBytes(tx.gasPrice),
-    bigintToBytes(tx.gasLimit),
-    toBytes,
-    bigintToBytes(tx.value),
-    dataBytes,
-    numberToBytes(tx.chainId),
-    new Uint8Array(0), // EIP-155: 0
-    new Uint8Array(0), // EIP-155: 0
-  ]);
-}
-
-async function signTransaction(rlpEncoded: Uint8Array, privateKeyHex: string, chainId: number): Promise<string> {
-  const { keccak_256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha3');
-  const { sign } = await import('https://esm.sh/@noble/secp256k1@2.1.0');
-  
-  // Hash the unsigned transaction
-  const txHash = keccak_256(rlpEncoded);
-  
-  // Sign
-  const keyHex = privateKeyHex.startsWith('0x') ? privateKeyHex.slice(2) : privateKeyHex;
-  const signature = sign(txHash, keyHex, { lowS: true, extraEntropy: false });
-  
-  const r = bigintToBytes(signature.r);
-  const s = bigintToBytes(signature.s);
-  
-  // EIP-155 v value
-  const v = signature.recovery + chainId * 2 + 35;
-  
-  // Re-encode with signature
-  const toBytes = hexToBytes(rlpEncoded[0] === 0xc0 ? '' : ''); // We need the original tx fields
-  // Actually, let's re-build from the raw tx params stored in the RLP
-  // This is getting complex - let's use a cleaner approach
-  
-  // We need to re-parse the original fields. Instead, let's pass them separately.
-  throw new Error('Use signAndSendTransaction instead');
-}
-
 /**
- * Complete sign-and-send in one step using noble-secp256k1
+ * Complete sign-and-send transaction using noble-secp256k1 + noble-hashes
+ * Uses Flashbots Protect RPC on Ethereum mainnet for MEV protection
  */
 async function signAndSendTransaction(
   network: string,
