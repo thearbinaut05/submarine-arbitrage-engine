@@ -19,9 +19,16 @@ export const NETWORK_CONFIG: Record<string, NetworkConfig> = {
     // Alternative Gelato addresses for different relay types:
     // - 0x27e4D5a5c6De0065F90fDa5Da0bA5f1dB39D8b8f (Gelato Relay v2)
     // - 0xaBcC9b596420A9E9172FD5938620E265a0f9Df92 (Gelato Automate)
-    // Gas settings
+// Gas settings
     maxGasPrice: 100_000_000_000, // 100 gwei
+    entryPoint: "0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789",
+    paymasters: [
+      "0xdCBE0C1A00e4Cf24AE77c52125e6e6b4F7C6Db4e",
+      "0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402",
+      "0x7D3201fa7a85c0A5f9fA1c0C6b9D0B784368d2ac"
+    ]
   },
+
   arbitrum: {
     chainId: 42161,
     name: "Arbitrum One",
@@ -78,6 +85,9 @@ export const NETWORK_CONFIG: Record<string, NetworkConfig> = {
 };
 
 export interface NetworkConfig {
+  entryPoint?: string;
+  paymasters?: string[];
+
   chainId: number;
   name: string;
   aavePoolProvider: string;

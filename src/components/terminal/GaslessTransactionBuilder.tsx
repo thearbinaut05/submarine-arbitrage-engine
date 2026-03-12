@@ -28,17 +28,31 @@ export function GaslessTransactionBuilder({ isWalletConnected }: GaslessTransact
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [status, setStatus] = useState<'idle' | 'signing' | 'relaying' | 'confirmed'>('idle');
 
-  const handleSubmit = async () => {
+const handleSubmit = async () => {
     if (!isWalletConnected) return;
     
     setIsSubmitting(true);
     setStatus('signing');
     
-    // Simulate signing
+    // ERC4337 UserOp with paymaster sponsorship
+    const userOp = {
+      sender: '0xYourSmartAccount',
+      nonce: 0,
+      initCode: '0x',
+      callData: '0x arbCalldata', // FlashArbExecutor.executeFlashLoanGasless
+      callGasLimit: 500000,
+      verificationGasLimit: 150000,
+      preVerificationGas: 21000,
+      maxFeePerGas: 20000000000,
+      maxPriorityFeePerGas: 1000000000,
+      paymasterAndData: '0xdCBE0C1A00e4Cf24AE77c52125e6e6b4F7C6Db4e' + '0x', // Top paymaster
+      signature: '0x signedUserOp'
+    };
+    
+    // Simulate bundler send
     await new Promise(resolve => setTimeout(resolve, 1500));
     setStatus('relaying');
     
-    // Simulate relaying
     await new Promise(resolve => setTimeout(resolve, 2000));
     setStatus('confirmed');
     

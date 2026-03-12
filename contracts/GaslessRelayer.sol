@@ -16,6 +16,43 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
  * @dev UUPS upgradeable for future improvements
  */
 contract GaslessRelayer is OwnableUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable, EIP712 {
+  import "./interfaces/IPaymasters.sol";
+
+  address public constant ENTRY_POINT = 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789;
+  address[3] public paymasters = [
+    0xdCBE0C1A00e4Cf24AE77c52125e6e6b4F7C6Db4e,
+    0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402,
+    0x7D3201fa7a85c0A5f9fA1c0C6b9D0B784368d2ac
+  ];
+
+  /**
+   * @notice ERC4337 Paymaster validation for gas sponsorship
+   */
+  function validatePaymasterUserOp(
+    IEntryPoint.UserOperation calldata userOp,
+    bytes32 userOpHash,
+    uint256 maxCost
+  ) external view returns (bytes memory context, uint256 validationData) {
+    require(msg.sender == ENTRY_POINT, "Only EntryPoint");
+    require(authorizedExecutors[userOp.sender], "Unauthorized sender");
+    // Sponsor all arb ops
+    return ("", 0);
+  }
+
+  /**
+   * @notice Post operation - transfer profits to paymaster
+   */
+  function postOp(
+    IEntryPoint.UserOperation calldata userOp,
+    bytes calldata context,
+    uint256 actualGasCost
+  ) external {
+    require(msg.sender == ENTRY_POINT, "Only EntryPoint");
+    // Refund paymaster from contract balance or profit
+    uint256 gasPrice = tx.gasprice;
+    payable(paymasters[0]).transfer(actualGasCost * gasPrice);
+  }
+
     using SafeERC20 for IERC20;
     using ECDSA for bytes32;
 
