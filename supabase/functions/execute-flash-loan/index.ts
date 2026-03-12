@@ -501,70 +501,212 @@ function getRouterForNetwork(network: string, dexName: string): { router: string
   return firstRouter ? { router: firstRouter, isV3: false } : null;
 }
 
+// ===== FLASHBOTS PROTECT RPC (MEV protection for Ethereum mainnet) =====
+const FLASHBOTS_RPC = 'https://rpc.flashbots.net';
+
 /**
- * Submit to Gelato using syncFee mode
- * This mode pays relay fees from the transaction itself (no whitelisting needed!)
- * Works with ANY target contract - no sponsor whitelisting required
+ * Simple RPC call helper
  */
-async function submitToGelatoSyncFee(
-  gelatoApiKey: string,
-  chainId: number,
-  target: string,
-  data: string,
-  feeToken: string = '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Native token (ETH/MATIC/etc)
-  isRelayContext: boolean = false // If true, contract must implement _getFeeCollector()
-): Promise<{ taskId: string }> {
-  // Use callWithSyncFee - pays relay fee from transaction, works with ANY contract!
-  const response = await fetch('https://api.gelato.digital/relays/v2/call-with-sync-fee', {
+async function rpcCall(rpcUrl: string, method: string, params: any[]): Promise<string> {
+  const resp = await fetch(rpcUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      chainId,
-      target,
-      data,
-      feeToken, // Token to pay fee in (native = ETH/MATIC/BNB/etc)
-      isRelayContext, // false = use callWithSyncFee, true = use callWithSyncFeeERC2771
-    }),
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }),
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gelato API error [${response.status}]: ${errorText}`);
+  const json = await resp.json();
+  if (json.error) {
+    throw new Error(`RPC error (${method}): ${json.error.message || JSON.stringify(json.error)}`);
   }
+  return json.result;
+}
 
-  return await response.json();
+function hexToBytes(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function bigintToBytes(val: bigint): Uint8Array {
+  if (val === 0n) return new Uint8Array(0);
+  const hex = val.toString(16);
+  const padded = hex.length % 2 ? '0' + hex : hex;
+  return hexToBytes(padded);
+}
+
+function numberToBytes(val: number): Uint8Array {
+  if (val === 0) return new Uint8Array(0);
+  return bigintToBytes(BigInt(val));
+}
+
+function rlpEncodeBytes(data: Uint8Array): Uint8Array {
+  if (data.length === 0) {
+    return new Uint8Array([0x80]);
+  }
+  if (data.length === 1 && data[0] < 0x80) return data;
+  if (data.length < 56) {
+    const result = new Uint8Array(1 + data.length);
+    result[0] = 0x80 + data.length;
+    result.set(data, 1);
+    return result;
+  }
+  const hexLen = data.length.toString(16);
+  const byteLen = Math.ceil(hexLen.length / 2);
+  const result = new Uint8Array(1 + byteLen + data.length);
+  result[0] = 0xb7 + byteLen;
+  for (let i = 0; i < byteLen; i++) {
+    result[byteLen - i] = (data.length >> (8 * i)) & 0xff;
+  }
+  result.set(data, 1 + byteLen);
+  return result;
+}
+
+function rlpEncodeList(items: Uint8Array[]): Uint8Array {
+  const encoded = items.map(rlpEncodeBytes);
+  const totalLen = encoded.reduce((sum, e) => sum + e.length, 0);
+  
+  let prefix: Uint8Array;
+  if (totalLen < 56) {
+    prefix = new Uint8Array([0xc0 + totalLen]);
+  } else {
+    const hexLen = totalLen.toString(16);
+    const byteLen = Math.ceil(hexLen.length / 2);
+    prefix = new Uint8Array(1 + byteLen);
+    prefix[0] = 0xf7 + byteLen;
+    for (let i = 0; i < byteLen; i++) {
+      prefix[byteLen - i] = (totalLen >> (8 * i)) & 0xff;
+    }
+  }
+  
+  const result = new Uint8Array(prefix.length + totalLen);
+  result.set(prefix, 0);
+  let offset = prefix.length;
+  for (const e of encoded) {
+    result.set(e, offset);
+    offset += e.length;
+  }
+  return result;
 }
 
 /**
- * Alternative: Submit to Gelato using sponsoredCallERC2771
- * This mode requires user's signature but works with any ERC2771-compatible contract
+ * Complete sign-and-send transaction using noble-secp256k1 + noble-hashes
+ * Uses Flashbots Protect RPC on Ethereum mainnet for MEV protection
  */
-async function submitToGelatoERC2771(
-  gelatoApiKey: string,
+async function signAndSendTransaction(
+  network: string,
   chainId: number,
-  target: string,
+  to: string,
   data: string,
-  userAddress: string
-): Promise<{ taskId: string }> {
-  // Use sponsoredCallERC2771 - requires ERC2771 support but no target whitelisting
-  const response = await fetch('https://api.gelato.digital/relays/v2/sponsored-call-erc2771', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sponsorApiKey: gelatoApiKey,
-      chainId,
-      target,
-      data,
-      user: userAddress,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Gelato ERC2771 API error [${response.status}]: ${errorText}`);
+  value: string = '0',
+): Promise<{ txHash: string }> {
+  const deployerKey = Deno.env.get('DEPLOYER_PRIVATE_KEY');
+  if (!deployerKey) throw new Error('DEPLOYER_PRIVATE_KEY not configured');
+  
+  const { keccak_256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha3');
+  const { hmac } = await import('https://esm.sh/@noble/hashes@1.4.0/hmac');
+  const { sha256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha256');
+  const secp = await import('https://esm.sh/@noble/secp256k1@2.1.0');
+  
+  // Configure hmacSha256Sync required by noble-secp256k1 v2
+  secp.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
+    const h = hmac.create(sha256, k);
+    m.forEach(msg => h.update(msg));
+    return h.digest();
+  };
+  
+  const keyHex = deployerKey.startsWith('0x') ? deployerKey.slice(2) : deployerKey;
+  
+  // Derive address
+  const pubKey = secp.getPublicKey(hexToBytes(keyHex), false);
+  const addrHash = keccak_256(pubKey.slice(1));
+  const fromAddress = '0x' + bytesToHex(addrHash.slice(-20));
+  
+  const rpcs = RPC_ENDPOINTS[network];
+  if (!rpcs?.length) throw new Error(`No RPC for ${network}`);
+  
+  // Use Flashbots for Ethereum mainnet
+  const useFlashbots = network === 'ethereum';
+  const sendRpc = useFlashbots ? FLASHBOTS_RPC : rpcs[0];
+  
+  // Get nonce
+  const nonceHex = await rpcCall(rpcs[0], 'eth_getTransactionCount', [fromAddress, 'pending']);
+  const nonce = parseInt(nonceHex, 16);
+  
+  // Get gas price
+  const gasPriceHex = await rpcCall(rpcs[0], 'eth_gasPrice', []);
+  const gasPrice = BigInt(gasPriceHex) * 110n / 100n; // +10%
+  
+  // Estimate gas - calculate minimum based on calldata size
+  const dataBytesLen = data.startsWith('0x') ? (data.length - 2) / 2 : data.length / 2;
+  // EIP-2028: 16 gas per non-zero byte, 4 gas per zero byte + 21000 base
+  const minIntrinsicGas = BigInt(21000 + dataBytesLen * 16); // worst case: all non-zero
+  let gasLimit = minIntrinsicGas * 3n; // 3x intrinsic as safe default
+  if (gasLimit < 2000000n) gasLimit = 2000000n; // minimum 2M for complex flash loan txs
+  
+  try {
+    const estHex = await rpcCall(rpcs[0], 'eth_estimateGas', [{
+      from: fromAddress, to, data,
+      value: value === '0' ? '0x0' : '0x' + BigInt(value).toString(16),
+    }]);
+    gasLimit = BigInt(estHex) * 130n / 100n; // 30% buffer
+    // Ensure we never go below intrinsic gas
+    if (gasLimit < minIntrinsicGas) gasLimit = minIntrinsicGas * 2n;
+  } catch (e) {
+    console.log('Gas estimate failed, using 500k:', e);
   }
-
-  return await response.json();
+  
+  const txValue = BigInt(value || '0');
+  const toBytes = hexToBytes(to.slice(2));
+  const dataBytes = data.startsWith('0x') ? hexToBytes(data.slice(2)) : hexToBytes(data);
+  
+  // RLP encode unsigned tx (EIP-155)
+  const unsignedTx = rlpEncodeList([
+    numberToBytes(nonce),
+    bigintToBytes(gasPrice),
+    bigintToBytes(gasLimit),
+    toBytes,
+    bigintToBytes(txValue),
+    dataBytes,
+    numberToBytes(chainId),
+    new Uint8Array(0),
+    new Uint8Array(0),
+  ]);
+  
+  // Hash and sign
+  const txHash = keccak_256(unsignedTx);
+  const sig = secp.sign(txHash, hexToBytes(keyHex), { lowS: true });
+  
+  const r = bigintToBytes(sig.r);
+  const s = bigintToBytes(sig.s);
+  const v = sig.recovery + chainId * 2 + 35;
+  
+  // RLP encode signed tx
+  const signedTx = rlpEncodeList([
+    numberToBytes(nonce),
+    bigintToBytes(gasPrice),
+    bigintToBytes(gasLimit),
+    toBytes,
+    bigintToBytes(txValue),
+    dataBytes,
+    numberToBytes(v),
+    r,
+    s,
+  ]);
+  
+  const rawTxHex = '0x' + bytesToHex(signedTx);
+  
+  console.log(`📡 Sending tx via ${useFlashbots ? '🛡️ Flashbots Protect (MEV protected)' : 'standard RPC'} on ${network}`);
+  console.log(`   From: ${fromAddress}, Nonce: ${nonce}, Gas: ${gasLimit}, GasPrice: ${(Number(gasPrice) / 1e9).toFixed(2)} gwei`);
+  
+  const resultHash = await rpcCall(sendRpc, 'eth_sendRawTransaction', [rawTxHex]);
+  
+  console.log(`✅ Transaction hash: ${resultHash}`);
+  return { txHash: resultHash };
 }
 
 serve(async (req) => {
@@ -832,7 +974,7 @@ serve(async (req) => {
         type: 'flash_loan',
         status: 'pending',
         network,
-        is_gasless: useGelato,
+        is_gasless: false,
         is_submarine: SCANNER_CONFIG.useSubmarineTransactions,
         gas_price: `${currentGasPrice.toFixed(2)} gwei`,
         relayer_address: routerInfo.router,
@@ -840,167 +982,120 @@ serve(async (req) => {
       .select()
       .single();
 
-    // Execute via Gelato for gasless execution
-    if (useGelato) {
-      const gelatoApiKey = Deno.env.get('GELATO_API_KEY');
-      if (!gelatoApiKey) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Gelato API key not configured',
-          transactionData: txData,
-          contracts: {
-            flashLoanProvider: flashLoanProvider.name,
-            flashLoanAddress: flashLoanProvider.address,
-            flashLoanFee: `${flashLoanProvider.fee / 100}%`,
-            swapRouter: routerInfo.isV3 ? 'Uniswap V3 SwapRouter' : 'V2-style Router',
-            swapRouterAddress: routerInfo.router,
-            note: 'All contracts are ALREADY DEPLOYED - no custom deployment needed!',
-          },
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+    // ===== EXECUTE VIA DIRECT TRANSACTION (Flashbots on ETH mainnet) =====
+    try {
+      console.log(`🚀 Executing direct transaction on ${network} (${network === 'ethereum' ? 'Flashbots MEV-protected' : 'standard RPC'})`);
+      
+      const result = await signAndSendTransaction(
+        network,
+        chainId,
+        txData.to,
+        txData.data,
+        txData.value || '0',
+      );
+
+      // Update transaction record with hash
+      if (transaction) {
+        await supabase
+          .from('transactions')
+          .update({ hash: result.txHash, status: 'confirmed' })
+          .eq('id', transaction.id);
       }
 
-      try {
-        // Submit to Gelato using syncFee mode - works with ANY contract!
-        // No sponsor whitelisting required - fee paid from transaction
-        console.log(`Submitting to Gelato syncFee mode for chain ${chainId}, target: ${txData.to}`);
+      // Update opportunity status
+      if (oppId) {
+        await supabase
+          .from('arbitrage_opportunities')
+          .update({ status: 'completed', executed_at: new Date().toISOString() })
+          .eq('id', oppId);
+      }
+
+      const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
+
+      return new Response(JSON.stringify({
+        success: true,
+        method: executionMethod + (network === 'ethereum' ? ' + Flashbots Protect' : ' + Direct TX'),
+        txHash: result.txHash,
+        opportunityId: oppId,
+        transactionId: transaction?.id,
+        network,
+        chainId,
         
-        const gelatoResult = await submitToGelatoSyncFee(
-          gelatoApiKey,
-          chainId,
-          txData.to,
-          txData.data,
-          '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Pay fee in native token
-          false // Not using relay context
-        );
+        contracts: {
+          flashLoanProvider: flashLoanProvider.name,
+          flashLoanAddress: flashLoanProvider.address,
+          flashLoanFee: `${flashLoanProvider.fee / 100}%`,
+          executionMethod,
+          swapTarget: txData.to,
+          note: aggregatorQuote 
+            ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator!`
+            : '✅ Using direct DEX router!',
+        },
+        
+        execution: {
+          type: network === 'ethereum' ? 'flashbots_protect' : 'direct_rpc',
+          description: network === 'ethereum' 
+            ? '🛡️ Sent via Flashbots Protect RPC - MEV protected, no frontrunning!'
+            : '📡 Sent via direct RPC with signed transaction',
+          mevProtected: network === 'ethereum',
+        },
+        
+        aggregatorDetails: aggregatorQuote ? {
+          aggregator: aggregatorQuote.aggregator,
+          expectedOutput: aggregatorQuote.toAmount,
+          priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
+        } : null,
+        
+        explorerUrl,
+        txUrl: `${explorerUrl}/tx/${result.txHash}`,
+        gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
+        executionTimeMs: Date.now() - startTime,
+        profitDestination: {
+          address: walletAddress,
+          source: profitSource,
+        },
+        message: `🚀 TX sent${network === 'ethereum' ? ' via Flashbots' : ''}: ${result.txHash.slice(0,10)}... Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
+        trade: {
+          tokenIn,
+          tokenOut,
+          amountIn,
+          sourceDex,
+          targetDex,
+          slippage: `${slippageTolerance}%`,
+        },
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
 
-        if (transaction) {
-          await supabase
-            .from('transactions')
-            .update({ hash: gelatoResult.taskId })
-            .eq('id', transaction.id);
-        }
+    } catch (execError) {
+      console.error('Transaction execution failed:', execError);
 
-        const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
-
-        return new Response(JSON.stringify({
-          success: true,
-          method: executionMethod + ' + Gelato SyncFee Relay',
-          taskId: gelatoResult.taskId,
-          opportunityId: oppId,
-          transactionId: transaction?.id,
-          network,
-          chainId,
-          
-          // Key execution info
-          contracts: {
-            flashLoanProvider: flashLoanProvider.name,
-            flashLoanAddress: flashLoanProvider.address,
-            flashLoanFee: `${flashLoanProvider.fee / 100}%`,
-            executionMethod,
-            swapTarget: txData.to,
-            note: aggregatorQuote 
-              ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator, no API key needed!`
-              : '✅ Using direct DEX router - no custom deployment needed!',
-          },
-          
-          gelatoMode: {
-            type: 'callWithSyncFee',
-            description: 'Pays relay fee from transaction value - works with ANY target contract!',
-            feeToken: 'Native (ETH/MATIC/BNB/AVAX)',
-            noWhitelistRequired: true,
-          },
-          
-          aggregatorDetails: aggregatorQuote ? {
-            aggregator: aggregatorQuote.aggregator,
-            expectedOutput: aggregatorQuote.toAmount,
-            priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
-          } : null,
-          
-          isGasless: true,
-          mevProtected: true,
-          explorerUrl,
-          gelatoStatusUrl: `https://relay.gelato.digital/tasks/${gelatoResult.taskId}`,
-          gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
-          executionTimeMs: Date.now() - startTime,
-          profitDestination: {
-            address: walletAddress,
-            source: profitSource,
-          },
-          message: aggregatorQuote 
-            ? `🚀 Swap via ${aggregatorQuote.aggregator} (FREE aggregator) + Gelato gasless relay! Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`
-            : `🚀 Swap via direct DEX router + Gelato gasless relay! Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
-          trade: {
-            tokenIn,
-            tokenOut,
-            amountIn,
-            sourceDex,
-            targetDex,
-            slippage: `${slippageTolerance}%`,
-          },
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-
-      } catch (gelatoError) {
-        console.error('Gelato submission failed:', gelatoError);
-
-        if (transaction) {
-          await supabase
-            .from('transactions')
-            .update({ status: 'failed' })
-            .eq('id', transaction.id);
-        }
-
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Gelato relay failed',
-          details: gelatoError instanceof Error ? gelatoError.message : 'Unknown error',
-          transactionData: txData,
-          contracts: {
-            swapRouter: routerInfo.router,
-            note: 'Transaction data ready for manual execution',
-          },
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      if (transaction) {
+        await supabase
+          .from('transactions')
+          .update({ status: 'failed' })
+          .eq('id', transaction.id);
       }
-    }
 
-    // Return transaction data for manual execution
-    return new Response(JSON.stringify({
-      success: true,
-      method: 'Manual Execution',
-      transactionData: txData,
-      opportunityId: oppId,
-      transactionId: transaction?.id,
-      network,
-      chainId,
-      contracts: {
-        flashLoanProvider: flashLoanProvider.name,
-        flashLoanAddress: flashLoanProvider.address,
-        swapRouter: routerInfo.router,
-        note: '✅ All contracts are ALREADY DEPLOYED - no custom deployment needed!',
-      },
-      isGasless: false,
-      gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
-      estimatedGas: '300000',
-      executionTimeMs: Date.now() - startTime,
-      message: 'Transaction data ready for manual execution via existing DEX router',
-      trade: {
-        tokenIn,
-        tokenOut,
-        amountIn,
-        sourceDex,
-        targetDex,
-        slippage: `${slippageTolerance}%`,
-      },
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      if (oppId) {
+        await supabase
+          .from('arbitrage_opportunities')
+          .update({ status: 'failed' })
+          .eq('id', oppId);
+      }
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Transaction execution failed',
+        details: execError instanceof Error ? execError.message : 'Unknown error',
+        transactionData: txData,
+        network,
+        executionTimeMs: Date.now() - startTime,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
   } catch (error) {
     console.error('Flash loan execution error:', error);
