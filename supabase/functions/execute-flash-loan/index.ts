@@ -1157,7 +1157,7 @@ serve(async (req) => {
         type: 'flash_loan',
         status: 'pending',
         network,
-        is_gasless: useGelato,
+        is_gasless: false,
         is_submarine: SCANNER_CONFIG.useSubmarineTransactions,
         gas_price: `${currentGasPrice.toFixed(2)} gwei`,
         relayer_address: routerInfo.router,
@@ -1165,167 +1165,120 @@ serve(async (req) => {
       .select()
       .single();
 
-    // Execute via Gelato for gasless execution
-    if (useGelato) {
-      const gelatoApiKey = Deno.env.get('GELATO_API_KEY');
-      if (!gelatoApiKey) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Gelato API key not configured',
-          transactionData: txData,
-          contracts: {
-            flashLoanProvider: flashLoanProvider.name,
-            flashLoanAddress: flashLoanProvider.address,
-            flashLoanFee: `${flashLoanProvider.fee / 100}%`,
-            swapRouter: routerInfo.isV3 ? 'Uniswap V3 SwapRouter' : 'V2-style Router',
-            swapRouterAddress: routerInfo.router,
-            note: 'All contracts are ALREADY DEPLOYED - no custom deployment needed!',
-          },
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+    // ===== EXECUTE VIA DIRECT TRANSACTION (Flashbots on ETH mainnet) =====
+    try {
+      console.log(`🚀 Executing direct transaction on ${network} (${network === 'ethereum' ? 'Flashbots MEV-protected' : 'standard RPC'})`);
+      
+      const result = await signAndSendTransaction(
+        network,
+        chainId,
+        txData.to,
+        txData.data,
+        txData.value || '0',
+      );
+
+      // Update transaction record with hash
+      if (transaction) {
+        await supabase
+          .from('transactions')
+          .update({ hash: result.txHash, status: 'confirmed' })
+          .eq('id', transaction.id);
       }
 
-      try {
-        // Submit to Gelato using syncFee mode - works with ANY contract!
-        // No sponsor whitelisting required - fee paid from transaction
-        console.log(`Submitting to Gelato syncFee mode for chain ${chainId}, target: ${txData.to}`);
+      // Update opportunity status
+      if (oppId) {
+        await supabase
+          .from('arbitrage_opportunities')
+          .update({ status: 'completed', executed_at: new Date().toISOString() })
+          .eq('id', oppId);
+      }
+
+      const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
+
+      return new Response(JSON.stringify({
+        success: true,
+        method: executionMethod + (network === 'ethereum' ? ' + Flashbots Protect' : ' + Direct TX'),
+        txHash: result.txHash,
+        opportunityId: oppId,
+        transactionId: transaction?.id,
+        network,
+        chainId,
         
-        const gelatoResult = await submitToGelatoSyncFee(
-          gelatoApiKey,
-          chainId,
-          txData.to,
-          txData.data,
-          '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', // Pay fee in native token
-          false // Not using relay context
-        );
+        contracts: {
+          flashLoanProvider: flashLoanProvider.name,
+          flashLoanAddress: flashLoanProvider.address,
+          flashLoanFee: `${flashLoanProvider.fee / 100}%`,
+          executionMethod,
+          swapTarget: txData.to,
+          note: aggregatorQuote 
+            ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator!`
+            : '✅ Using direct DEX router!',
+        },
+        
+        execution: {
+          type: network === 'ethereum' ? 'flashbots_protect' : 'direct_rpc',
+          description: network === 'ethereum' 
+            ? '🛡️ Sent via Flashbots Protect RPC - MEV protected, no frontrunning!'
+            : '📡 Sent via direct RPC with signed transaction',
+          mevProtected: network === 'ethereum',
+        },
+        
+        aggregatorDetails: aggregatorQuote ? {
+          aggregator: aggregatorQuote.aggregator,
+          expectedOutput: aggregatorQuote.toAmount,
+          priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
+        } : null,
+        
+        explorerUrl,
+        txUrl: `${explorerUrl}/tx/${result.txHash}`,
+        gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
+        executionTimeMs: Date.now() - startTime,
+        profitDestination: {
+          address: walletAddress,
+          source: profitSource,
+        },
+        message: `🚀 TX sent${network === 'ethereum' ? ' via Flashbots' : ''}: ${result.txHash.slice(0,10)}... Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
+        trade: {
+          tokenIn,
+          tokenOut,
+          amountIn,
+          sourceDex,
+          targetDex,
+          slippage: `${slippageTolerance}%`,
+        },
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
 
-        if (transaction) {
-          await supabase
-            .from('transactions')
-            .update({ hash: gelatoResult.taskId })
-            .eq('id', transaction.id);
-        }
+    } catch (execError) {
+      console.error('Transaction execution failed:', execError);
 
-        const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
-
-        return new Response(JSON.stringify({
-          success: true,
-          method: executionMethod + ' + Gelato SyncFee Relay',
-          taskId: gelatoResult.taskId,
-          opportunityId: oppId,
-          transactionId: transaction?.id,
-          network,
-          chainId,
-          
-          // Key execution info
-          contracts: {
-            flashLoanProvider: flashLoanProvider.name,
-            flashLoanAddress: flashLoanProvider.address,
-            flashLoanFee: `${flashLoanProvider.fee / 100}%`,
-            executionMethod,
-            swapTarget: txData.to,
-            note: aggregatorQuote 
-              ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator, no API key needed!`
-              : '✅ Using direct DEX router - no custom deployment needed!',
-          },
-          
-          gelatoMode: {
-            type: 'callWithSyncFee',
-            description: 'Pays relay fee from transaction value - works with ANY target contract!',
-            feeToken: 'Native (ETH/MATIC/BNB/AVAX)',
-            noWhitelistRequired: true,
-          },
-          
-          aggregatorDetails: aggregatorQuote ? {
-            aggregator: aggregatorQuote.aggregator,
-            expectedOutput: aggregatorQuote.toAmount,
-            priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
-          } : null,
-          
-          isGasless: true,
-          mevProtected: true,
-          explorerUrl,
-          gelatoStatusUrl: `https://relay.gelato.digital/tasks/${gelatoResult.taskId}`,
-          gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
-          executionTimeMs: Date.now() - startTime,
-          profitDestination: {
-            address: walletAddress,
-            source: profitSource,
-          },
-          message: aggregatorQuote 
-            ? `🚀 Swap via ${aggregatorQuote.aggregator} (FREE aggregator) + Gelato gasless relay! Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`
-            : `🚀 Swap via direct DEX router + Gelato gasless relay! Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
-          trade: {
-            tokenIn,
-            tokenOut,
-            amountIn,
-            sourceDex,
-            targetDex,
-            slippage: `${slippageTolerance}%`,
-          },
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-
-      } catch (gelatoError) {
-        console.error('Gelato submission failed:', gelatoError);
-
-        if (transaction) {
-          await supabase
-            .from('transactions')
-            .update({ status: 'failed' })
-            .eq('id', transaction.id);
-        }
-
-        return new Response(JSON.stringify({
-          success: false,
-          error: 'Gelato relay failed',
-          details: gelatoError instanceof Error ? gelatoError.message : 'Unknown error',
-          transactionData: txData,
-          contracts: {
-            swapRouter: routerInfo.router,
-            note: 'Transaction data ready for manual execution',
-          },
-        }), {
-          status: 500,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+      if (transaction) {
+        await supabase
+          .from('transactions')
+          .update({ status: 'failed' })
+          .eq('id', transaction.id);
       }
-    }
 
-    // Return transaction data for manual execution
-    return new Response(JSON.stringify({
-      success: true,
-      method: 'Manual Execution',
-      transactionData: txData,
-      opportunityId: oppId,
-      transactionId: transaction?.id,
-      network,
-      chainId,
-      contracts: {
-        flashLoanProvider: flashLoanProvider.name,
-        flashLoanAddress: flashLoanProvider.address,
-        swapRouter: routerInfo.router,
-        note: '✅ All contracts are ALREADY DEPLOYED - no custom deployment needed!',
-      },
-      isGasless: false,
-      gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
-      estimatedGas: '300000',
-      executionTimeMs: Date.now() - startTime,
-      message: 'Transaction data ready for manual execution via existing DEX router',
-      trade: {
-        tokenIn,
-        tokenOut,
-        amountIn,
-        sourceDex,
-        targetDex,
-        slippage: `${slippageTolerance}%`,
-      },
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+      if (oppId) {
+        await supabase
+          .from('arbitrage_opportunities')
+          .update({ status: 'failed' })
+          .eq('id', oppId);
+      }
+
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Transaction execution failed',
+        details: execError instanceof Error ? execError.message : 'Unknown error',
+        transactionData: txData,
+        network,
+        executionTimeMs: Date.now() - startTime,
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
   } catch (error) {
     console.error('Flash loan execution error:', error);
