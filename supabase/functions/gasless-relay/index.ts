@@ -31,6 +31,9 @@ interface GaslessRequest {
   isSubmarine?: boolean;
   opportunityId?: string;
   priorityFee?: string;
+  // when supplied the server will attempt an ERC‑4337 bundler call using this
+  // paymaster address; the connected wallet still receives profits.
+  paymasterAddress?: string;
 }
 
 interface GelatoResponse {
@@ -148,7 +151,7 @@ serve(async (req) => {
     }
 
     const body: GaslessRequest = await req.json();
-    const { network, to, data, deadline, isSubmarine, opportunityId, walletAddress } = body;
+    const { network, to, data, deadline, isSubmarine, opportunityId, walletAddress, paymasterAddress } = body;
 
     // Validate deadline
     if (deadline && deadline < Date.now() / 1000) {
@@ -174,7 +177,7 @@ serve(async (req) => {
       });
     }
 
-    // Check gas price
+    // Check gas price (bundler might ignore this but we keep the same guard)
     const currentGasPrice = await getGasPrice(network);
     const gasLimits = GAS_LIMITS[network];
     
@@ -211,6 +214,97 @@ serve(async (req) => {
 
     if (txError) {
       console.error('Error creating transaction:', txError);
+    }
+
+    // If a paymaster address was provided, attempt to use an ERC‑4337 bundler
+    if (paymasterAddress) {
+      // default to Pimlico if no URL provided
+      const bundlerUrlCandidate =
+        Deno.env.get('BUNDLER_URL') ||
+        Deno.env.get('PIMLICO_BUNDLER_URL') ||
+        'https://bundler.pimlico.io/relay';
+      const bundlerUrl = bundlerUrlCandidate;
+      if (!bundlerUrl) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Paymaster bundler not configured',
+          code: 'MISSING_BUNDLER',
+          suggestion: 'Set BUNDLER_URL or PIMLICO_BUNDLER_URL pointing to a service that can wrap the call in a UserOperation.',
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Build a very simple payload for the bundler; the bundler implementation
+      // is expected to know how to convert this to a proper UserOperation.  We're
+      // intentionally generic because the on-chain parameter requirements may
+      // vary depending on your paymaster contract.
+      const bundlerPayload = {
+        network,
+        to: to || contracts.gaslessRelayer,
+        data,
+        value: body.value || '0',
+        walletAddress,
+        paymasterAddress,
+        opportunityId,
+      };
+
+      const bundlerResp = await fetch(bundlerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bundlerPayload),
+      });
+      if (!bundlerResp.ok) {
+        const text = await bundlerResp.text();
+        console.error('Bundler error:', text);
+        if (transaction) {
+          await supabase
+            .from('transactions')
+            .update({ status: 'failed' })
+            .eq('id', transaction.id);
+        }
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Bundler request failed',
+          details: text,
+          status: bundlerResp.status,
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      const result = await bundlerResp.json();
+      if (transaction) {
+        await supabase
+          .from('transactions')
+          .update({
+            hash: result.taskId || result.userOpHash || 'pending',
+            status: 'pending',
+            is_gasless: true,
+            relayer_address: paymasterAddress,
+          })
+          .eq('id', transaction.id);
+      }
+
+      const explorerUrl = EXPLORER_URLS[network];
+      const executionTime = Date.now() - startTime;
+      return new Response(JSON.stringify({
+        success: true,
+        transactionId: transaction?.id,
+        taskId: result.taskId || result.userOpHash,
+        network,
+        chainId: CHAIN_IDS[network],
+        relayType: 'erc4337',
+        paymasterAddress,
+        explorerUrl: `${explorerUrl}/tx/`,
+        gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
+        executionTimeMs: executionTime,
+        message: 'UserOperation submitted to bundler',
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Execute via Gelato

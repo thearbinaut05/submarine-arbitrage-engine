@@ -55,6 +55,20 @@ export const CHAIN_IDS: Record<string, number> = {
   avalanche: 43114,
 };
 
+// --------------------------------------------------------------------------------
+// **Optional paymaster addresses used for ERC-4337 sponsorship**
+// These are the high‑volume paymasters we've identified (see PIMLICO_PAYMASTERS_ANALYSIS.md).
+// When the scanner is configured to use paymasters, profits will be sent directly to one of
+// these addresses and gas will be sponsored via our gasless relay path.
+export const PAYMASTERS: Record<string, string[]> = {
+  ethereum: [
+    '0xdCBE0C1A00e4Cf24AE77c52125e6e6b4F7C6Db4e',
+    '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
+    '0x7D3201fa7a85c0A5f9fA1c0C6b9D0B784368d2ac',
+  ],
+  // other networks can be added when/if paymasters deploy there
+};
+
 // Block times in milliseconds (for scan timing)
 export const BLOCK_TIMES: Record<string, number> = {
   ethereum: 12000,
@@ -621,6 +635,19 @@ export const SCANNER_CONFIG = {
   useSubmarineTransactions: true,
   usePrivateMempool: true,
   maxBlocksToWait: 3,
+
+  // if enabled, transactions will be routed through the first address in
+  // PAYMASTERS[network].  That address is *not* a private key – it's an
+  // ERC‑4337 paymaster contract.  Your backend must forward the call through
+  // an ERC‑4337 bundler (set BUNDLER_URL or PIMLICO_BUNDLER_URL) which attaches
+  // `paymasterAddress` to the UserOperation.  The connected wallet still
+  // receives profits; the paymaster contract is responsible for gas.
+  //
+  // Existing code previously required PAYMASTER_PRIVATE_KEY; that pattern is
+  // now deprecated and removed (the private key cannot be derived for a
+  // contract).  If you really want a server‑side key instead you can still
+  // fallback to the old direct path by disabling usePaymasters.
+  usePaymasters: false,
 };
 
 // Explorer URLs

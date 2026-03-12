@@ -7,6 +7,7 @@ import {
   RPC_ENDPOINTS,
   SCANNER_CONFIG,
   EXPLORER_URLS,
+  PAYMASTERS,
 } from "../_shared/mainnet-config.ts";
 import {
   BALANCER_VAULT,
@@ -603,14 +604,24 @@ async function signAndSendTransaction(
   to: string,
   data: string,
   value: string = '0',
+  privateKeyOverride?: string, // optional key to sign with instead of deployer
 ): Promise<{ txHash: string }> {
-  const deployerKey = Deno.env.get('DEPLOYER_PRIVATE_KEY');
-  if (!deployerKey) throw new Error('DEPLOYER_PRIVATE_KEY not configured');
+  const key = privateKeyOverride || Deno.env.get('DEPLOYER_PRIVATE_KEY');
+  if (!key) throw new Error('No private key configured for signing');
+  const deployerKey = key;
   
   const { keccak_256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha3');
   const { hmac } = await import('https://esm.sh/@noble/hashes@1.4.0/hmac');
   const { sha256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha256');
   const secp = await import('https://esm.sh/@noble/secp256k1@2.1.0');
+
+  // log current balance of signing key for easier debugging
+  try {
+    const balHexCheck = await rpcCall(rpcs[0], 'eth_getBalance', [fromAddress, 'latest']);
+    console.log(`Signing account ${fromAddress} balance: ${BigInt(balHexCheck).toString()}`);
+  } catch (e) {
+    console.log('Failed to fetch signing account balance for debug:', e);
+  }
   
   // Configure hmacSha256Sync required by noble-secp256k1 v2
   secp.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
@@ -658,6 +669,25 @@ async function signAndSendTransaction(
     if (gasLimit < minIntrinsicGas) gasLimit = minIntrinsicGas * 2n;
   } catch (e) {
     console.log('Gas estimate failed, using 500k:', e);
+  }
+  
+  // --- ensure deployer has enough balance to cover gas + value ---
+  try {
+    const balHex = await rpcCall(rpcs[0], 'eth_getBalance', [fromAddress, 'latest']);
+    const balance = BigInt(balHex);
+    const txCost = gasPrice * gasLimit + txValue;
+    if (balance < txCost) {
+      throw new Error(
+        `insufficient funds for gas * price + value: address ${fromAddress} have ${balance} want ${txCost}`
+      );
+    }
+  } catch (balErr) {
+    // if we detected insufficient funds, rethrow so caller handles it
+    if (balErr instanceof Error && balErr.message.startsWith('insufficient funds')) {
+      throw balErr;
+    }
+    // any other error, just log but continue
+    console.log('Balance check failed:', balErr);
   }
   
   const txValue = BigInt(value || '0');
@@ -793,6 +823,22 @@ serve(async (req) => {
       }
     } else {
       console.log(`Using connected wallet for profits: ${walletAddress}`);
+    }
+
+    // Determine if we should route through an ERC‑4337 paymaster. The
+    // paymaster is just a contract address; there is no private key to
+    // “figure out” – the bundler (e.g. Pimlico) will include this address when it
+    // constructs the UserOperation.  We select the first configured paymaster for
+    // the network, if any.
+    let paymasterAddress: string | undefined;
+    if (SCANNER_CONFIG.usePaymasters) {
+      const paymasterList = PAYMASTERS[network] || [];
+      if (paymasterList.length > 0) {
+        paymasterAddress = paymasterList[0];
+        console.log(`[paymaster] will route through ${paymasterAddress}`);
+      } else {
+        console.log('[paymaster] enabled but no paymasters configured for', network);
+      }
     }
 
     // Validate amountIn - critical for BigInt conversion
@@ -982,88 +1028,207 @@ serve(async (req) => {
       .select()
       .single();
 
-    // ===== EXECUTE VIA DIRECT TRANSACTION (Flashbots on ETH mainnet) =====
+    // ===== EXECUTE TRANSACTION (direct or via gasless relay) =====
     try {
-      console.log(`🚀 Executing direct transaction on ${network} (${network === 'ethereum' ? 'Flashbots MEV-protected' : 'standard RPC'})`);
-      
-      const result = await signAndSendTransaction(
-        network,
-        chainId,
-        txData.to,
-        txData.data,
-        txData.value || '0',
-      );
-
-      // Update transaction record with hash
-      if (transaction) {
-        await supabase
-          .from('transactions')
-          .update({ hash: result.txHash, status: 'confirmed' })
-          .eq('id', transaction.id);
-      }
-
-      // Update opportunity status
-      if (oppId) {
-        await supabase
-          .from('arbitrage_opportunities')
-          .update({ status: 'completed', executed_at: new Date().toISOString() })
-          .eq('id', oppId);
-      }
-
+      let result: any;
+      let responsePayload: any;
       const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
 
-      return new Response(JSON.stringify({
-        success: true,
-        method: executionMethod + (network === 'ethereum' ? ' + Flashbots Protect' : ' + Direct TX'),
-        txHash: result.txHash,
-        opportunityId: oppId,
-        transactionId: transaction?.id,
-        network,
-        chainId,
-        
-        contracts: {
-          flashLoanProvider: flashLoanProvider.name,
-          flashLoanAddress: flashLoanProvider.address,
-          flashLoanFee: `${flashLoanProvider.fee / 100}%`,
-          executionMethod,
-          swapTarget: txData.to,
-          note: aggregatorQuote 
-            ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator!`
-            : '✅ Using direct DEX router!',
-        },
-        
-        execution: {
-          type: network === 'ethereum' ? 'flashbots_protect' : 'direct_rpc',
-          description: network === 'ethereum' 
-            ? '🛡️ Sent via Flashbots Protect RPC - MEV protected, no frontrunning!'
-            : '📡 Sent via direct RPC with signed transaction',
-          mevProtected: network === 'ethereum',
-        },
-        
-        aggregatorDetails: aggregatorQuote ? {
-          aggregator: aggregatorQuote.aggregator,
-          expectedOutput: aggregatorQuote.toAmount,
-          priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
-        } : null,
-        
-        explorerUrl,
-        txUrl: `${explorerUrl}/tx/${result.txHash}`,
-        gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
-        executionTimeMs: Date.now() - startTime,
-        profitDestination: {
-          address: walletAddress,
-          source: profitSource,
-        },
-        message: `🚀 TX sent${network === 'ethereum' ? ' via Flashbots' : ''}: ${result.txHash.slice(0,10)}... Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
-        trade: {
-          tokenIn,
-          tokenOut,
-          amountIn,
-          sourceDex,
-          targetDex,
-          slippage: `${slippageTolerance}%`,
-        },
-      }), {
+      if (paymasterAddress) {
+        // we plan to send the transaction via an ERC‑4337 bundler that will
+        // attach `paymasterAddress` in the UserOperation.  The connected wallet
+        // (or embedded wallet) still receives any profit; gas fees are covered by
+        // the paymaster contract, not by a private key controlled by us.
+        console.log(`🚀 Executing via ERC-4337 bundler with paymaster ${paymasterAddress}`);
+
+        // The bundler endpoint is expected to know how to wrap a simple contract
+        // call into a UserOperation.  You can use Pimlico's hosted bundler or run
+        // your own; set BUNDLER_URL (or PIMLICO_BUNDLER_URL) in the environment.
+        // prefer explicit configuration but fall back to Pimlico's hosted
+        // bundler if nothing else is set.  This makes the simplest possible
+        // setup "just work" when you enable paymaster mode.
+        const bundlerUrlCandidate =
+          Deno.env.get('BUNDLER_URL') ||
+          Deno.env.get('PIMLICO_BUNDLER_URL') ||
+          'https://bundler.pimlico.io/relay';
+        const bundlerUrl = bundlerUrlCandidate;
+        if (!bundlerUrl) {
+          // (should never happen since we default above, but keep the guard)
+          throw new Error(
+            'paymaster mode requested but no bundler URL configured; set BUNDLER_URL or PIMLICO_BUNDLER_URL'
+          );
+        }
+
+        // Forward to the generic gasless-relay endpoint which has been extended to
+        // support paymaster requests.  This keeps the bundling logic in one place.
+        const relayReq = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/gasless-relay`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            // use service role key so the function can create/update records
+            Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+          },
+          body: JSON.stringify({
+            network,
+            to: txData.to,
+            data: txData.data,
+            value: txData.value || '0',
+            walletAddress,
+            opportunityId: oppId,
+            paymasterAddress,
+            isSubmarine: SCANNER_CONFIG.useSubmarineTransactions,
+          }),
+        });
+
+        if (!relayReq.ok) {
+          const text = await relayReq.text();
+          throw new Error(`Bundler relay failed: ${relayReq.status} ${text}`);
+        }
+        result = await relayReq.json();
+
+        // result should contain at least a taskId or userOpHash
+        if (transaction) {
+          await supabase
+            .from('transactions')
+            .update({
+              hash: result.taskId || result.userOpHash || 'pending',
+              status: 'pending',
+              is_gasless: true,
+            })
+            .eq('id', transaction.id);
+        }
+
+        if (oppId) {
+          await supabase
+            .from('arbitrage_opportunities')
+            .update({ status: 'completed', executed_at: new Date().toISOString() })
+            .eq('id', oppId);
+        }
+
+        responsePayload = {
+          success: true,
+          method: executionMethod + ' + ERC4337',
+          txHash: result.taskId || result.userOpHash,
+          opportunityId: oppId,
+          transactionId: transaction?.id,
+          network,
+          chainId,
+          contracts: {
+            flashLoanProvider: flashLoanProvider.name,
+            flashLoanAddress: flashLoanProvider.address,
+            flashLoanFee: `${flashLoanProvider.fee / 100}%`,
+            executionMethod,
+            swapTarget: txData.to,
+            note: aggregatorQuote 
+              ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator!`
+              : '✅ Using direct DEX router!',
+          },
+          execution: {
+            type: 'erc4337_paymaster',
+            description: `📡 Bundled via ${bundlerUrl}`,
+            mevProtected: network === 'ethereum',
+          },
+          aggregatorDetails: aggregatorQuote ? {
+            aggregator: aggregatorQuote.aggregator,
+            expectedOutput: aggregatorQuote.toAmount,
+            priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
+          } : null,
+          explorerUrl,
+          txUrl: result.taskId ? `${explorerUrl}/tx/${result.taskId}` : undefined,
+          gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
+          executionTimeMs: Date.now() - startTime,
+          profitDestination: {
+            address: walletAddress,
+            source: profitSource,
+          },
+          message: `🚀 UserOp sent: ${result.taskId?.toString().slice(0,10)}... profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
+          trade: {
+            tokenIn,
+            tokenOut,
+            amountIn,
+            sourceDex,
+            targetDex,
+            slippage: `${slippageTolerance}%`,
+          },
+        };
+      } else {
+        // normal direct transaction path (flashbots or standard RPC)
+        console.log(`🚀 Executing direct transaction on ${network} (${network === 'ethereum' ? 'Flashbots MEV-protected' : 'standard RPC'})`);
+        result = await signAndSendTransaction(
+          network,
+          chainId,
+          txData.to,
+          txData.data,
+          txData.value || '0',
+        );
+
+        // Update transaction record with hash
+        if (transaction) {
+          await supabase
+            .from('transactions')
+            .update({ hash: result.txHash, status: 'confirmed' })
+            .eq('id', transaction.id);
+        }
+
+        // Update opportunity status
+        if (oppId) {
+          await supabase
+            .from('arbitrage_opportunities')
+            .update({ status: 'completed', executed_at: new Date().toISOString() })
+            .eq('id', oppId);
+        }
+
+        responsePayload = {
+          success: true,
+          method: executionMethod + (network === 'ethereum' ? ' + Flashbots Protect' : ' + Direct TX'),
+          txHash: result.txHash,
+          opportunityId: oppId,
+          transactionId: transaction?.id,
+          network,
+          chainId,
+          contracts: {
+            flashLoanProvider: flashLoanProvider.name,
+            flashLoanAddress: flashLoanProvider.address,
+            flashLoanFee: `${flashLoanProvider.fee / 100}%`,
+            executionMethod,
+            swapTarget: txData.to,
+            note: aggregatorQuote 
+              ? `✅ Using ${aggregatorQuote.aggregator} - FREE aggregator!`
+              : '✅ Using direct DEX router!',
+          },
+          execution: {
+            type: network === 'ethereum' ? 'flashbots_protect' : 'direct_rpc',
+            description: network === 'ethereum' 
+              ? '🛡️ Sent via Flashbots Protect RPC - MEV protected, no frontrunning!'
+              : '📡 Sent via direct RPC with signed transaction',
+            mevProtected: network === 'ethereum',
+          },
+          aggregatorDetails: aggregatorQuote ? {
+            aggregator: aggregatorQuote.aggregator,
+            expectedOutput: aggregatorQuote.toAmount,
+            priceImpact: aggregatorQuote.priceRoute?.priceImpact || 'N/A',
+          } : null,
+          explorerUrl,
+          txUrl: `${explorerUrl}/tx/${result.txHash}`,
+          gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
+          executionTimeMs: Date.now() - startTime,
+          profitDestination: {
+            address: walletAddress,
+            source: profitSource,
+          },
+          message: `🚀 TX sent${network === 'ethereum' ? ' via Flashbots' : ''}: ${result.txHash.slice(0,10)}... Profits → ${walletAddress.slice(0,6)}...${walletAddress.slice(-4)}`,
+          trade: {
+            tokenIn,
+            tokenOut,
+            amountIn,
+            sourceDex,
+            targetDex,
+            slippage: `${slippageTolerance}%`,
+          },
+        };
+      }
+
+      return new Response(JSON.stringify(responsePayload), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
 
@@ -1084,15 +1249,27 @@ serve(async (req) => {
           .eq('id', oppId);
       }
 
-      return new Response(JSON.stringify({
+      let statusCode = 500;
+      let errorDetails = execError instanceof Error ? execError.message : 'Unknown error';
+      let hint: string | null = null;
+
+      if (typeof errorDetails === 'string' && errorDetails.includes('insufficient funds')) {
+        statusCode = 402; // payment required / not enough balance
+        hint = 'Check the DEPLOYER_PRIVATE_KEY account balance and fund it with native gas currency before retrying.';
+      }
+
+      const responsePayload: any = {
         success: false,
         error: 'Transaction execution failed',
-        details: execError instanceof Error ? execError.message : 'Unknown error',
+        details: errorDetails,
         transactionData: txData,
         network,
         executionTimeMs: Date.now() - startTime,
-      }), {
-        status: 500,
+      };
+      if (hint) responsePayload.hint = hint;
+
+      return new Response(JSON.stringify(responsePayload), {
+        status: statusCode,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

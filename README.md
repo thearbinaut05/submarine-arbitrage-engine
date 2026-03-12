@@ -101,6 +101,18 @@ cp .env.example .env
 ```bash
 npm run dev
 ```
+> **Bundler configuration (optional)**
+> If you enable paymaster support (`usePaymasters = true` in
+> `SCANNER_CONFIG`), set `BUNDLER_URL` or `PIMLICO_BUNDLER_URL` in the
+> environment. This should point at a service (e.g. Pimlico's hosted
+> bundler or your own implementation) that wraps a simple transaction
+> payload into an ERC‑4337 UserOperation including the paymaster address.
+> The code will automatically default to `https://bundler.pimlico.io/relay`
+> when no URL is provided, so you can often leave this unset and still just
+> work.
+> Without a bundler the app will fall back to Gelato relay or respond with a
+> "missing bundler" error (only happens if you explicitly disable the
+> default and forget to set anything).
 
 ### 4. Connect Wallet
 1. Click "Connect Wallet" button
