@@ -641,14 +641,21 @@ async function signAndSendTransaction(
   const gasPriceHex = await rpcCall(rpcs[0], 'eth_gasPrice', []);
   const gasPrice = BigInt(gasPriceHex) * 110n / 100n; // +10%
   
-  // Estimate gas
-  let gasLimit = 500000n;
+  // Estimate gas - calculate minimum based on calldata size
+  const dataBytesLen = data.startsWith('0x') ? (data.length - 2) / 2 : data.length / 2;
+  // EIP-2028: 16 gas per non-zero byte, 4 gas per zero byte + 21000 base
+  const minIntrinsicGas = BigInt(21000 + dataBytesLen * 16); // worst case: all non-zero
+  let gasLimit = minIntrinsicGas * 3n; // 3x intrinsic as safe default
+  if (gasLimit < 2000000n) gasLimit = 2000000n; // minimum 2M for complex flash loan txs
+  
   try {
     const estHex = await rpcCall(rpcs[0], 'eth_estimateGas', [{
       from: fromAddress, to, data,
       value: value === '0' ? '0x0' : '0x' + BigInt(value).toString(16),
     }]);
-    gasLimit = BigInt(estHex) * 130n / 100n;
+    gasLimit = BigInt(estHex) * 130n / 100n; // 30% buffer
+    // Ensure we never go below intrinsic gas
+    if (gasLimit < minIntrinsicGas) gasLimit = minIntrinsicGas * 2n;
   } catch (e) {
     console.log('Gas estimate failed, using 500k:', e);
   }
