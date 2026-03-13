@@ -505,6 +505,17 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    if (enforceGasless) {
+      if (transaction) {
+        await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
+      }
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Gasless mode is enforced, but no paymaster execution path is available on ${network}`,
+        code: 'GASLESS_PATH_UNAVAILABLE',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // ===== DIRECT TX PATH (no paymaster, sign with deployer key) =====
     console.log(`[Direct] Signing TX on ${network}, profits → ${walletAddress}`);
 
