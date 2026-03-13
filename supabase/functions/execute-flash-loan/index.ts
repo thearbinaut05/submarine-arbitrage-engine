@@ -1242,7 +1242,7 @@ serve(async (req) => {
 
       if (typeof errorDetails === 'string' && errorDetails.includes('insufficient funds')) {
         statusCode = 402; // payment required / not enough balance
-        hint = 'Check the DEPLOYER_PRIVATE_KEY account balance and fund it with native gas currency before retrying.';
+        hint = 'Gasless mode is enforced. Verify your paymaster + bundler configuration for this network.';
       }
 
       const responsePayload: any = {
