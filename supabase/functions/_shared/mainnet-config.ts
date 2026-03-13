@@ -647,7 +647,7 @@ export const SCANNER_CONFIG = {
   // now deprecated and removed (the private key cannot be derived for a
   // contract).  If you really want a server‑side key instead you can still
   // fallback to the old direct path by disabling usePaymasters.
-  usePaymasters: false,
+  usePaymasters: true,
 };
 
 // Explorer URLs
