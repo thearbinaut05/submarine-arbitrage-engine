@@ -99,6 +99,9 @@ export function useRealArbitrage(
   const executingOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
   const completedOpportunitiesRef = useRef<Map<string, ArbitrageOpportunity>>(new Map());
 
+  const [autoExecute, setAutoExecute] = useState(false);
+  const autoExecutedIdsRef = useRef<Set<string>>(new Set());
+
   // Convert backend opportunity to frontend format
   const convertToOpportunity = useCallback((backendOpp: BackendOpportunity): ArbitrageOpportunity => {
     return {
@@ -568,6 +571,30 @@ export function useRealArbitrage(
     }
   }, [walletAddress, getAuthToken, pollForTransaction]);
 
+  const toggleAutoExecute = useCallback(() => {
+    setAutoExecute(prev => !prev);
+  }, []);
+
+  useEffect(() => {
+    if (!autoExecute || !walletAddress) return;
+
+    // Auto-execute one top pending high-confidence opportunity per scan cycle
+    const topOpp = state.opportunities
+      .filter(o => o.status === 'pending' && o.netProfit > 0 && o.confidence > 70)
+      .sort((a, b) => b.netProfit - a.netProfit)[0];
+
+    if (!topOpp) return;
+    if (autoExecutedIdsRef.current.has(topOpp.id)) return;
+
+    autoExecutedIdsRef.current.add(topOpp.id);
+    console.log(`[AutoExecute] Submitting opportunity ${topOpp.id} (profit ${topOpp.netProfit.toFixed(2)}, confidence ${topOpp.confidence})`);
+    executeOpportunity(topOpp).catch(err => {
+      console.error('[AutoExecute] execution failed:', err);
+      // allow retry for the same opp if desired by removing from set
+      autoExecutedIdsRef.current.delete(topOpp.id);
+    });
+  }, [autoExecute, walletAddress, state.opportunities, executeOpportunity]);
+
   // Get all completed opportunities (for history display)
   const getCompletedOpportunities = useCallback((): ArbitrageOpportunity[] => {
     return Array.from(completedOpportunitiesRef.current.values()).sort(
@@ -597,5 +624,7 @@ export function useRealArbitrage(
     executeOpportunity,
     getCompletedOpportunities,
     getExecutingOpportunities,
+    autoExecute,
+    toggleAutoExecute,
   };
 }

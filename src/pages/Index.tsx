@@ -42,6 +42,8 @@ const Index = () => {
     startScanning: realStartScanning,
     stopScanning: realStopScanning,
     executeOpportunity: realExecuteOpportunity,
+    autoExecute: realAutoExecute,
+    toggleAutoExecute: toggleRealAutoExecute,
   } = useRealArbitrage(wallet.address, wallet.network as Network | null, null);
 
   // Mock scanner for config UI only (stats tracking)
@@ -151,7 +153,7 @@ const Index = () => {
                   {/* Left Column - Scanner & Controls */}
                   <div className="xl:col-span-1 space-y-6">
                     <ScannerControls
-                      config={config}
+                      config={{ ...config, autoExecute: realAutoExecute }}
                       stats={{
                         totalScanned: stats.totalScanned + (lastScanTime ? 1 : 0),
                         totalProfit: stats.totalProfit,
@@ -160,7 +162,10 @@ const Index = () => {
                       }}
                       onStart={handleStartScanning}
                       onStop={handleStopScanning}
-                      onToggleAutoExecute={toggleAutoExecute}
+                      onToggleAutoExecute={() => {
+                        toggleAutoExecute();
+                        toggleRealAutoExecute();
+                      }}
                       onUpdateConfig={updateConfig}
                     />
                     <GaslessTransactionBuilder isWalletConnected={wallet.isConnected} />
