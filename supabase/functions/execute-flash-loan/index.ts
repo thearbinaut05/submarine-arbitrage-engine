@@ -780,60 +780,25 @@ serve(async (req) => {
       targetDex,
       slippageTolerance = SCANNER_CONFIG.defaultSlippage,
       walletAddress: rawWalletAddress,
-      useGelato = true,
+      enforceConnectedWallet = true,
+      enforceGasless = true,
       opportunityId,
     } = body;
 
-    // Resolve profit address: connected wallet > embedded wallet > auto-create
-    let walletAddress = rawWalletAddress || '0x0000000000000000000000000000000000000001';
-    let profitSource = 'connected';
-    
-    if (!rawWalletAddress || rawWalletAddress === '0x0000000000000000000000000000000000000001') {
-      // Try to find embedded wallet for this user
-      if (userId) {
-        const { data: embeddedWallet } = await supabase
-          .from('embedded_wallets')
-          .select('address')
-          .eq('user_id', userId)
-          .eq('network', network)
-          .single();
-        
-        if (embeddedWallet) {
-          walletAddress = embeddedWallet.address;
-          profitSource = 'embedded';
-          console.log(`Using embedded wallet for profits: ${walletAddress}`);
-        } else {
-          // Auto-create embedded wallet
-          const privateKeyBytes = crypto.getRandomValues(new Uint8Array(32));
-          const privateKey = '0x' + Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-          const hashBuffer = await crypto.subtle.digest('SHA-256', privateKeyBytes);
-          const hashArray = new Uint8Array(hashBuffer);
-          const newAddress = '0x' + Array.from(hashArray.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
-          
-          const encSecret = Deno.env.get('DEPLOYER_PRIVATE_KEY') || 'default-key';
-          const keyBytes = new TextEncoder().encode(privateKey);
-          const secretBytes = new TextEncoder().encode(encSecret);
-          const encrypted = new Uint8Array(keyBytes.length);
-          for (let i = 0; i < keyBytes.length; i++) {
-            encrypted[i] = keyBytes[i] ^ secretBytes[i % secretBytes.length];
-          }
-          const encryptedKey = btoa(String.fromCharCode(...encrypted));
-          
-          await supabase.from('embedded_wallets').insert({
-            user_id: userId,
-            address: newAddress,
-            encrypted_private_key: encryptedKey,
-            network,
-          });
-          
-          walletAddress = newAddress;
-          profitSource = 'embedded-auto-created';
-          console.log(`Auto-created embedded wallet for profits: ${walletAddress}`);
-        }
-      }
-    } else {
-      console.log(`Using connected wallet for profits: ${walletAddress}`);
+    if (!isValidAddress(rawWalletAddress)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'A valid connected wallet address is required for execution',
+        code: 'INVALID_CONNECTED_WALLET',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    const walletAddress = normalizeAddress(rawWalletAddress);
+    const profitSource = 'connected';
+    console.log(`Using connected wallet for profits: ${walletAddress}`);
 
     // Determine if we should route through an ERC‑4337 paymaster. The
     // paymaster is just a contract address; there is no private key to
