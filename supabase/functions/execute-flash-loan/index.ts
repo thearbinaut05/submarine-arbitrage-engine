@@ -615,14 +615,6 @@ async function signAndSendTransaction(
   const { sha256 } = await import('https://esm.sh/@noble/hashes@1.4.0/sha256');
   const secp = await import('https://esm.sh/@noble/secp256k1@2.1.0');
 
-  // log current balance of signing key for easier debugging
-  try {
-    const balHexCheck = await rpcCall(rpcs[0], 'eth_getBalance', [fromAddress, 'latest']);
-    console.log(`Signing account ${fromAddress} balance: ${BigInt(balHexCheck).toString()}`);
-  } catch (e) {
-    console.log('Failed to fetch signing account balance for debug:', e);
-  }
-  
   // Configure hmacSha256Sync required by noble-secp256k1 v2
   secp.etc.hmacSha256Sync = (k: Uint8Array, ...m: Uint8Array[]) => {
     const h = hmac.create(sha256, k);
@@ -638,6 +630,15 @@ async function signAndSendTransaction(
   const fromAddress = '0x' + bytesToHex(addrHash.slice(-20));
   
   const rpcs = RPC_ENDPOINTS[network];
+  if (!rpcs?.length) throw new Error(`No RPC for ${network}`);
+
+  // log current balance of signing key for easier debugging
+  try {
+    const balHexCheck = await rpcCall(rpcs[0], 'eth_getBalance', [fromAddress, 'latest']);
+    console.log(`Signing account ${fromAddress} balance: ${BigInt(balHexCheck).toString()}`);
+  } catch (e) {
+    console.log('Failed to fetch signing account balance for debug:', e);
+  }
   if (!rpcs?.length) throw new Error(`No RPC for ${network}`);
   
   // Use Flashbots for Ethereum mainnet
