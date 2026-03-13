@@ -501,8 +501,10 @@ export function useRealArbitrage(
           amountIn: amountIn,
           sourceDex: opportunity.sourceDex,
           targetDex: opportunity.targetDex,
-          walletAddress: walletAddress, // Connected wallet for profit routing
-          profitRecipient: walletAddress,
+          walletAddress: connectedWallet,
+          profitRecipient: connectedWallet,
+          enforceConnectedWallet: true,
+          enforceGasless: true,
           minProfit: opportunity.netProfit * 0.8,
           isSubmarine: true,
         }),
