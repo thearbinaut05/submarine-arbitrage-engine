@@ -800,20 +800,50 @@ serve(async (req) => {
     const profitSource = 'connected';
     console.log(`Using connected wallet for profits: ${walletAddress}`);
 
-    // Determine if we should route through an ERC‑4337 paymaster. The
-    // paymaster is just a contract address; there is no private key to
-    // “figure out” – the bundler (e.g. Pimlico) will include this address when it
-    // constructs the UserOperation.  We select the first configured paymaster for
-    // the network, if any.
+    // Strict gasless mode: require paymaster + bundler when execution is requested
     let paymasterAddress: string | undefined;
+    const paymasterList = PAYMASTERS[network] || [];
+
     if (SCANNER_CONFIG.usePaymasters) {
-      const paymasterList = PAYMASTERS[network] || [];
-      if (paymasterList.length > 0) {
-        paymasterAddress = paymasterList[0];
-        console.log(`[paymaster] will route through ${paymasterAddress}`);
-      } else {
-        console.log('[paymaster] enabled but no paymasters configured for', network);
+      if (paymasterList.length === 0) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: `No paymaster configured for ${network}. Gasless execution is blocked on this network.`,
+          code: 'PAYMASTER_NOT_CONFIGURED',
+          configuredPaymasterNetworks: Object.keys(PAYMASTERS),
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
+
+      paymasterAddress = paymasterList[0];
+      console.log(`[paymaster] using ${paymasterAddress}`);
+    } else if (enforceGasless) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Gasless execution is required but paymaster mode is disabled in scanner config',
+        code: 'GASLESS_DISABLED',
+      }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const bundlerUrl = Deno.env.get('BUNDLER_URL') || Deno.env.get('PIMLICO_BUNDLER_URL');
+    if (enforceGasless && !bundlerUrl) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Missing bundler configuration for gasless execution',
+        code: 'BUNDLER_NOT_CONFIGURED',
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (enforceConnectedWallet) {
+      console.log(`[recipient] enforcing connected wallet recipient ${walletAddress}`);
     }
 
     // Validate amountIn - critical for BigInt conversion
