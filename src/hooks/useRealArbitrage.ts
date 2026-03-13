@@ -450,6 +450,13 @@ export function useRealArbitrage(
       throw new Error('Wallet not connected');
     }
 
+    let connectedWallet: string;
+    try {
+      connectedWallet = ethers.getAddress(walletAddress);
+    } catch {
+      throw new Error('Connected wallet address is invalid');
+    }
+
     const targetNetwork = opportunity.sourceNetwork;
 
     // Create executing opportunity with all necessary data
