@@ -281,9 +281,32 @@ serve(async (req) => {
       deadline,
       isSubmarine,
       opportunityId,
-      walletAddress,
+      walletAddress: rawWalletAddress,
       paymasterAddress: explicitPaymaster,
+      enforceGasless = false,
+      enforceRecipient,
     } = body;
+
+    if (!isValidAddress(rawWalletAddress)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'A valid connected wallet address is required',
+        code: 'INVALID_CONNECTED_WALLET',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const walletAddress = normalizeAddress(rawWalletAddress);
+    const normalizedExpectedRecipient = isValidAddress(enforceRecipient) ? normalizeAddress(enforceRecipient) : null;
+
+    if (normalizedExpectedRecipient && normalizedExpectedRecipient !== walletAddress) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Recipient mismatch with connected wallet',
+        code: 'RECIPIENT_MISMATCH',
+        expectedRecipient: normalizedExpectedRecipient,
+        receivedWallet: walletAddress,
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     // Validate deadline
     if (deadline && deadline < Date.now() / 1000) {
@@ -318,6 +341,29 @@ serve(async (req) => {
     const chainId = CHAIN_IDS[network];
     const targetAddress = to || contracts.gaslessRelayer;
 
+    const configuredPaymasters = PAYMASTERS[network] || [];
+    if (explicitPaymaster && configuredPaymasters.length > 0 && !configuredPaymasters.includes(explicitPaymaster)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Requested paymaster is not approved for this network',
+        code: 'INVALID_PAYMASTER',
+        requestedPaymaster: explicitPaymaster,
+        approvedPaymasters: configuredPaymasters,
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ---- Determine paymaster ----
+    const paymasterAddress = explicitPaymaster ||
+      (SCANNER_CONFIG.usePaymasters ? (configuredPaymasters[0] || null) : null);
+
+    if (enforceGasless && !paymasterAddress) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: `No paymaster configured for ${network}; gasless execution cannot continue`,
+        code: 'PAYMASTER_NOT_CONFIGURED',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Create transaction record
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
@@ -337,10 +383,6 @@ serve(async (req) => {
       .single();
 
     if (txError) console.error('Error creating transaction:', txError);
-
-    // ---- Determine paymaster ----
-    const paymasterAddress = explicitPaymaster ||
-      (SCANNER_CONFIG.usePaymasters ? (PAYMASTERS[network]?.[0] || null) : null);
 
     if (paymasterAddress) {
       // ===== ERC-4337 PAYMASTER PATH (GASLESS) =====
