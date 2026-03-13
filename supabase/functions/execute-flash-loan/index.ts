@@ -800,46 +800,26 @@ serve(async (req) => {
     const profitSource = 'connected';
     console.log(`Using connected wallet for profits: ${walletAddress}`);
 
-    // Strict gasless mode: require paymaster + bundler when execution is requested
+    // Gasless setup (paymaster + bundler) is optional; we fallback to direct transaction if unavailable.
     let paymasterAddress: string | undefined;
     const paymasterList = PAYMASTERS[network] || [];
 
-    if (SCANNER_CONFIG.usePaymasters) {
-      if (paymasterList.length === 0) {
-        return new Response(JSON.stringify({
-          success: false,
-          error: `No paymaster configured for ${network}. Gasless execution is blocked on this network.`,
-          code: 'PAYMASTER_NOT_CONFIGURED',
-          configuredPaymasterNetworks: Object.keys(PAYMASTERS),
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
+    if (SCANNER_CONFIG.usePaymasters && paymasterList.length > 0) {
       paymasterAddress = paymasterList[0];
       console.log(`[paymaster] using ${paymasterAddress}`);
-    } else if (enforceGasless) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Gasless execution is required but paymaster mode is disabled in scanner config',
-        code: 'GASLESS_DISABLED',
-      }), {
-        status: 503,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    } else {
+      if (SCANNER_CONFIG.usePaymasters) {
+        console.warn(`No paymaster configured for ${network}. Gasless execution unavailable.`);
+      }
+      if (enforceGasless) {
+        console.warn('Gasless execution requested but not available; falling back to direct execution.');
+      }
     }
 
     const bundlerUrl = Deno.env.get('BUNDLER_URL') || Deno.env.get('PIMLICO_BUNDLER_URL');
-    if (enforceGasless && !bundlerUrl) {
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Missing bundler configuration for gasless execution',
-        code: 'BUNDLER_NOT_CONFIGURED',
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (paymasterAddress && !bundlerUrl) {
+      console.warn('Bundler URL missing even though paymaster is configured. Disabling paymaster execution for this request.');
+      paymasterAddress = undefined;
     }
 
     if (enforceConnectedWallet) {
