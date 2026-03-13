@@ -1040,37 +1040,17 @@ serve(async (req) => {
       const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
 
       if (paymasterAddress) {
-        // we plan to send the transaction via an ERC‑4337 bundler that will
-        // attach `paymasterAddress` in the UserOperation.  The connected wallet
-        // (or embedded wallet) still receives any profit; gas fees are covered by
-        // the paymaster contract, not by a private key controlled by us.
         console.log(`🚀 Executing via ERC-4337 bundler with paymaster ${paymasterAddress}`);
 
-        // The bundler endpoint is expected to know how to wrap a simple contract
-        // call into a UserOperation.  You can use Pimlico's hosted bundler or run
-        // your own; set BUNDLER_URL (or PIMLICO_BUNDLER_URL) in the environment.
-        // prefer explicit configuration but fall back to Pimlico's hosted
-        // bundler if nothing else is set.  This makes the simplest possible
-        // setup "just work" when you enable paymaster mode.
-        const bundlerUrlCandidate =
-          Deno.env.get('BUNDLER_URL') ||
-          Deno.env.get('PIMLICO_BUNDLER_URL') ||
-          'https://bundler.pimlico.io/relay';
-        const bundlerUrl = bundlerUrlCandidate;
         if (!bundlerUrl) {
-          // (should never happen since we default above, but keep the guard)
-          throw new Error(
-            'paymaster mode requested but no bundler URL configured; set BUNDLER_URL or PIMLICO_BUNDLER_URL'
-          );
+          throw new Error('Gasless execution requires BUNDLER_URL or PIMLICO_BUNDLER_URL');
         }
 
-        // Forward to the generic gasless-relay endpoint which has been extended to
-        // support paymaster requests.  This keeps the bundling logic in one place.
+        // Forward to the generic gasless relay endpoint (paymaster-only mode).
         const relayReq = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/gasless-relay`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // use service role key so the function can create/update records
             Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
           },
           body: JSON.stringify({
@@ -1082,6 +1062,8 @@ serve(async (req) => {
             opportunityId: oppId,
             paymasterAddress,
             isSubmarine: SCANNER_CONFIG.useSubmarineTransactions,
+            enforceGasless: true,
+            enforceRecipient: walletAddress,
           }),
         });
 
