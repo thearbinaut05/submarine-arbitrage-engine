@@ -30,6 +30,16 @@ interface GaslessRequest {
   opportunityId?: string;
   priorityFee?: string;
   paymasterAddress?: string;
+  enforceGasless?: boolean;
+  enforceRecipient?: string;
+}
+
+function isValidAddress(value: string | undefined | null): value is string {
+  return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function normalizeAddress(address: string): string {
+  return `0x${address.slice(2).toLowerCase()}`;
 }
 
 // ---- JSON-RPC helper ----
@@ -271,9 +281,32 @@ serve(async (req) => {
       deadline,
       isSubmarine,
       opportunityId,
-      walletAddress,
+      walletAddress: rawWalletAddress,
       paymasterAddress: explicitPaymaster,
+      enforceGasless = false,
+      enforceRecipient,
     } = body;
+
+    if (!isValidAddress(rawWalletAddress)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'A valid connected wallet address is required',
+        code: 'INVALID_CONNECTED_WALLET',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    const walletAddress = normalizeAddress(rawWalletAddress);
+    const normalizedExpectedRecipient = isValidAddress(enforceRecipient) ? normalizeAddress(enforceRecipient) : null;
+
+    if (normalizedExpectedRecipient && normalizedExpectedRecipient !== walletAddress) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Recipient mismatch with connected wallet',
+        code: 'RECIPIENT_MISMATCH',
+        expectedRecipient: normalizedExpectedRecipient,
+        receivedWallet: walletAddress,
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
 
     // Validate deadline
     if (deadline && deadline < Date.now() / 1000) {
@@ -308,6 +341,29 @@ serve(async (req) => {
     const chainId = CHAIN_IDS[network];
     const targetAddress = to || contracts.gaslessRelayer;
 
+    const configuredPaymasters = PAYMASTERS[network] || [];
+    if (explicitPaymaster && configuredPaymasters.length > 0 && !configuredPaymasters.includes(explicitPaymaster)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Requested paymaster is not approved for this network',
+        code: 'INVALID_PAYMASTER',
+        requestedPaymaster: explicitPaymaster,
+        approvedPaymasters: configuredPaymasters,
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // ---- Determine paymaster ----
+    const paymasterAddress = explicitPaymaster ||
+      (SCANNER_CONFIG.usePaymasters ? (configuredPaymasters[0] || null) : null);
+
+    if (enforceGasless && !paymasterAddress) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: `No paymaster configured for ${network}; gasless execution cannot continue`,
+        code: 'PAYMASTER_NOT_CONFIGURED',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
     // Create transaction record
     const { data: transaction, error: txError } = await supabase
       .from('transactions')
@@ -327,10 +383,6 @@ serve(async (req) => {
       .single();
 
     if (txError) console.error('Error creating transaction:', txError);
-
-    // ---- Determine paymaster ----
-    const paymasterAddress = explicitPaymaster ||
-      (SCANNER_CONFIG.usePaymasters ? (PAYMASTERS[network]?.[0] || null) : null);
 
     if (paymasterAddress) {
       // ===== ERC-4337 PAYMASTER PATH (GASLESS) =====
@@ -365,17 +417,40 @@ serve(async (req) => {
       let userOpHash: string | null = null;
       let fallbackUsed = false;
 
-      if (bundlerUrl) {
+      if (!bundlerUrl) {
+        if (enforceGasless) {
+          if (transaction) {
+            await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
+          }
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'Gasless mode requires a bundler URL',
+            code: 'BUNDLER_NOT_CONFIGURED',
+          }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        console.log('[ERC4337] No bundler URL configured, using direct TX fallback');
+        fallbackUsed = true;
+      } else {
         try {
           userOpHash = await sendUserOpToBundler(bundlerUrl, userOp, ENTRY_POINT);
           console.log(`[ERC4337] UserOp submitted: ${userOpHash}`);
         } catch (bundlerErr) {
+          if (enforceGasless) {
+            if (transaction) {
+              await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
+            }
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'Bundler rejected gasless UserOperation',
+              code: 'BUNDLER_REJECTED_USEROP',
+              details: bundlerErr instanceof Error ? bundlerErr.message : String(bundlerErr),
+            }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+
           console.error('[ERC4337] Bundler failed, falling back to direct TX:', bundlerErr);
           fallbackUsed = true;
         }
-      } else {
-        console.log('[ERC4337] No bundler URL configured, using direct TX with deployer key (gas paid from deployer, profits to connected wallet)');
-        fallbackUsed = true;
       }
 
       if (fallbackUsed) {
@@ -428,6 +503,17 @@ serve(async (req) => {
           ? `⚡ TX sent via deployer key. Gas covered by deployer. Profits → ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
           : `🛡️ Gasless UserOp submitted via paymaster ${paymasterAddress.slice(0, 8)}... Profits → ${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    if (enforceGasless) {
+      if (transaction) {
+        await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
+      }
+      return new Response(JSON.stringify({
+        success: false,
+        error: `Gasless mode is enforced, but no paymaster execution path is available on ${network}`,
+        code: 'GASLESS_PATH_UNAVAILABLE',
+      }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
     // ===== DIRECT TX PATH (no paymaster, sign with deployer key) =====

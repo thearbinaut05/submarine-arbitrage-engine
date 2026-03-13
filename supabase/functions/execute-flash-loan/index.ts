@@ -69,8 +69,18 @@ interface FlashLoanRequest {
   targetDex: string;
   slippageTolerance?: number;
   walletAddress?: string;
+  enforceConnectedWallet?: boolean;
+  enforceGasless?: boolean;
   useGelato?: boolean;
   opportunityId?: string;
+}
+
+function isValidAddress(value: string | undefined | null): value is string {
+  return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function normalizeAddress(address: string): string {
+  return `0x${address.slice(2).toLowerCase()}`;
 }
 
 interface SwapQuote {
@@ -770,75 +780,70 @@ serve(async (req) => {
       targetDex,
       slippageTolerance = SCANNER_CONFIG.defaultSlippage,
       walletAddress: rawWalletAddress,
-      useGelato = true,
+      enforceConnectedWallet = true,
+      enforceGasless = true,
       opportunityId,
     } = body;
 
-    // Resolve profit address: connected wallet > embedded wallet > auto-create
-    let walletAddress = rawWalletAddress || '0x0000000000000000000000000000000000000001';
-    let profitSource = 'connected';
-    
-    if (!rawWalletAddress || rawWalletAddress === '0x0000000000000000000000000000000000000001') {
-      // Try to find embedded wallet for this user
-      if (userId) {
-        const { data: embeddedWallet } = await supabase
-          .from('embedded_wallets')
-          .select('address')
-          .eq('user_id', userId)
-          .eq('network', network)
-          .single();
-        
-        if (embeddedWallet) {
-          walletAddress = embeddedWallet.address;
-          profitSource = 'embedded';
-          console.log(`Using embedded wallet for profits: ${walletAddress}`);
-        } else {
-          // Auto-create embedded wallet
-          const privateKeyBytes = crypto.getRandomValues(new Uint8Array(32));
-          const privateKey = '0x' + Array.from(privateKeyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
-          const hashBuffer = await crypto.subtle.digest('SHA-256', privateKeyBytes);
-          const hashArray = new Uint8Array(hashBuffer);
-          const newAddress = '0x' + Array.from(hashArray.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('');
-          
-          const encSecret = Deno.env.get('DEPLOYER_PRIVATE_KEY') || 'default-key';
-          const keyBytes = new TextEncoder().encode(privateKey);
-          const secretBytes = new TextEncoder().encode(encSecret);
-          const encrypted = new Uint8Array(keyBytes.length);
-          for (let i = 0; i < keyBytes.length; i++) {
-            encrypted[i] = keyBytes[i] ^ secretBytes[i % secretBytes.length];
-          }
-          const encryptedKey = btoa(String.fromCharCode(...encrypted));
-          
-          await supabase.from('embedded_wallets').insert({
-            user_id: userId,
-            address: newAddress,
-            encrypted_private_key: encryptedKey,
-            network,
-          });
-          
-          walletAddress = newAddress;
-          profitSource = 'embedded-auto-created';
-          console.log(`Auto-created embedded wallet for profits: ${walletAddress}`);
-        }
-      }
-    } else {
-      console.log(`Using connected wallet for profits: ${walletAddress}`);
+    if (!isValidAddress(rawWalletAddress)) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'A valid connected wallet address is required for execution',
+        code: 'INVALID_CONNECTED_WALLET',
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Determine if we should route through an ERC‑4337 paymaster. The
-    // paymaster is just a contract address; there is no private key to
-    // “figure out” – the bundler (e.g. Pimlico) will include this address when it
-    // constructs the UserOperation.  We select the first configured paymaster for
-    // the network, if any.
+    const walletAddress = normalizeAddress(rawWalletAddress);
+    const profitSource = 'connected';
+    console.log(`Using connected wallet for profits: ${walletAddress}`);
+
+    // Strict gasless mode: require paymaster + bundler when execution is requested
     let paymasterAddress: string | undefined;
+    const paymasterList = PAYMASTERS[network] || [];
+
     if (SCANNER_CONFIG.usePaymasters) {
-      const paymasterList = PAYMASTERS[network] || [];
-      if (paymasterList.length > 0) {
-        paymasterAddress = paymasterList[0];
-        console.log(`[paymaster] will route through ${paymasterAddress}`);
-      } else {
-        console.log('[paymaster] enabled but no paymasters configured for', network);
+      if (paymasterList.length === 0) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: `No paymaster configured for ${network}. Gasless execution is blocked on this network.`,
+          code: 'PAYMASTER_NOT_CONFIGURED',
+          configuredPaymasterNetworks: Object.keys(PAYMASTERS),
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       }
+
+      paymasterAddress = paymasterList[0];
+      console.log(`[paymaster] using ${paymasterAddress}`);
+    } else if (enforceGasless) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Gasless execution is required but paymaster mode is disabled in scanner config',
+        code: 'GASLESS_DISABLED',
+      }), {
+        status: 503,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const bundlerUrl = Deno.env.get('BUNDLER_URL') || Deno.env.get('PIMLICO_BUNDLER_URL');
+    if (enforceGasless && !bundlerUrl) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Missing bundler configuration for gasless execution',
+        code: 'BUNDLER_NOT_CONFIGURED',
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (enforceConnectedWallet) {
+      console.log(`[recipient] enforcing connected wallet recipient ${walletAddress}`);
     }
 
     // Validate amountIn - critical for BigInt conversion
@@ -1035,37 +1040,17 @@ serve(async (req) => {
       const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
 
       if (paymasterAddress) {
-        // we plan to send the transaction via an ERC‑4337 bundler that will
-        // attach `paymasterAddress` in the UserOperation.  The connected wallet
-        // (or embedded wallet) still receives any profit; gas fees are covered by
-        // the paymaster contract, not by a private key controlled by us.
         console.log(`🚀 Executing via ERC-4337 bundler with paymaster ${paymasterAddress}`);
 
-        // The bundler endpoint is expected to know how to wrap a simple contract
-        // call into a UserOperation.  You can use Pimlico's hosted bundler or run
-        // your own; set BUNDLER_URL (or PIMLICO_BUNDLER_URL) in the environment.
-        // prefer explicit configuration but fall back to Pimlico's hosted
-        // bundler if nothing else is set.  This makes the simplest possible
-        // setup "just work" when you enable paymaster mode.
-        const bundlerUrlCandidate =
-          Deno.env.get('BUNDLER_URL') ||
-          Deno.env.get('PIMLICO_BUNDLER_URL') ||
-          'https://bundler.pimlico.io/relay';
-        const bundlerUrl = bundlerUrlCandidate;
         if (!bundlerUrl) {
-          // (should never happen since we default above, but keep the guard)
-          throw new Error(
-            'paymaster mode requested but no bundler URL configured; set BUNDLER_URL or PIMLICO_BUNDLER_URL'
-          );
+          throw new Error('Gasless execution requires BUNDLER_URL or PIMLICO_BUNDLER_URL');
         }
 
-        // Forward to the generic gasless-relay endpoint which has been extended to
-        // support paymaster requests.  This keeps the bundling logic in one place.
+        // Forward to the generic gasless relay endpoint (paymaster-only mode).
         const relayReq = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/gasless-relay`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // use service role key so the function can create/update records
             Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
           },
           body: JSON.stringify({
@@ -1077,6 +1062,8 @@ serve(async (req) => {
             opportunityId: oppId,
             paymasterAddress,
             isSubmarine: SCANNER_CONFIG.useSubmarineTransactions,
+            enforceGasless: true,
+            enforceRecipient: walletAddress,
           }),
         });
 
@@ -1255,7 +1242,7 @@ serve(async (req) => {
 
       if (typeof errorDetails === 'string' && errorDetails.includes('insufficient funds')) {
         statusCode = 402; // payment required / not enough balance
-        hint = 'Check the DEPLOYER_PRIVATE_KEY account balance and fund it with native gas currency before retrying.';
+        hint = 'Gasless mode is enforced. Verify your paymaster + bundler configuration for this network.';
       }
 
       const responsePayload: any = {
