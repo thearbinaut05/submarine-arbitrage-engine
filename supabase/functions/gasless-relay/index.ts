@@ -417,17 +417,40 @@ serve(async (req) => {
       let userOpHash: string | null = null;
       let fallbackUsed = false;
 
-      if (bundlerUrl) {
+      if (!bundlerUrl) {
+        if (enforceGasless) {
+          if (transaction) {
+            await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
+          }
+          return new Response(JSON.stringify({
+            success: false,
+            error: 'Gasless mode requires a bundler URL',
+            code: 'BUNDLER_NOT_CONFIGURED',
+          }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+        }
+
+        console.log('[ERC4337] No bundler URL configured, using direct TX fallback');
+        fallbackUsed = true;
+      } else {
         try {
           userOpHash = await sendUserOpToBundler(bundlerUrl, userOp, ENTRY_POINT);
           console.log(`[ERC4337] UserOp submitted: ${userOpHash}`);
         } catch (bundlerErr) {
+          if (enforceGasless) {
+            if (transaction) {
+              await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
+            }
+            return new Response(JSON.stringify({
+              success: false,
+              error: 'Bundler rejected gasless UserOperation',
+              code: 'BUNDLER_REJECTED_USEROP',
+              details: bundlerErr instanceof Error ? bundlerErr.message : String(bundlerErr),
+            }), { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+          }
+
           console.error('[ERC4337] Bundler failed, falling back to direct TX:', bundlerErr);
           fallbackUsed = true;
         }
-      } else {
-        console.log('[ERC4337] No bundler URL configured, using direct TX with deployer key (gas paid from deployer, profits to connected wallet)');
-        fallbackUsed = true;
       }
 
       if (fallbackUsed) {
