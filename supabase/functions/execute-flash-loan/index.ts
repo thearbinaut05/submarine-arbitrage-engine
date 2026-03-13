@@ -639,8 +639,6 @@ async function signAndSendTransaction(
   } catch (e) {
     console.log('Failed to fetch signing account balance for debug:', e);
   }
-  if (!rpcs?.length) throw new Error(`No RPC for ${network}`);
-  
   // Use Flashbots for Ethereum mainnet
   const useFlashbots = network === 'ethereum';
   const sendRpc = useFlashbots ? FLASHBOTS_RPC : rpcs[0];
