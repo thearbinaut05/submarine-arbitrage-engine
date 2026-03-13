@@ -30,6 +30,16 @@ interface GaslessRequest {
   opportunityId?: string;
   priorityFee?: string;
   paymasterAddress?: string;
+  enforceGasless?: boolean;
+  enforceRecipient?: string;
+}
+
+function isValidAddress(value: string | undefined | null): value is string {
+  return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function normalizeAddress(address: string): string {
+  return `0x${address.slice(2).toLowerCase()}`;
 }
 
 // ---- JSON-RPC helper ----
