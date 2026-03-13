@@ -674,7 +674,8 @@ async function signAndSendTransaction(
   try {
     const balHex = await rpcCall(rpcs[0], 'eth_getBalance', [fromAddress, 'latest']);
     const balance = BigInt(balHex);
-    const txCost = gasPrice * gasLimit + txValue;
+    const txValueCheck = BigInt(value || '0');
+    const txCost = gasPrice * gasLimit + txValueCheck;
     if (balance < txCost) {
       throw new Error(
         `insufficient funds for gas * price + value: address ${fromAddress} have ${balance} want ${txCost}`
