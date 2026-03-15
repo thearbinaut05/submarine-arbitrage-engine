@@ -252,20 +252,51 @@ export function useWallet() {
     setWallet(prev => ({ ...prev, isConnecting: true }));
 
     try {
+      // Request accounts first before creating provider to catch rejection early
+      let accounts: string[];
+      try {
+        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }) as string[];
+      } catch (reqError) {
+        console.warn('Wallet connection rejected by user:', reqError);
+        setWallet(prev => ({ ...prev, isConnecting: false }));
+        return;
+      }
+
+      if (!accounts || accounts.length === 0) {
+        console.warn('No accounts returned from wallet');
+        setWallet(prev => ({ ...prev, isConnecting: false }));
+        return;
+      }
+
       const provider = new ethers.BrowserProvider(window.ethereum);
       providerRef.current = provider;
-      const accounts = await provider.send('eth_requestAccounts', []);
-      const network = await providerRef.current.getNetwork();
+      const network = await provider.getNetwork();
       
       const chainId = Number(network.chainId);
       const detectedNetwork = Object.values(NETWORKS).find(n => n.chainId === chainId);
 
       if (!detectedNetwork) {
-        throw new Error(`Unsupported network: chainId ${chainId}`);
+        console.warn(`Unsupported network: chainId ${chainId}`);
+        setWallet(prev => ({ ...prev, isConnecting: false }));
+        return;
       }
 
-      const balance = await providerRef.current.getBalance(accounts[0]);
-      const tokens = await fetchTokenBalances(accounts[0], detectedNetwork.id);
+      // Reset RPC provider for the new network
+      rpcProviderRef.current = new ethers.JsonRpcProvider(detectedNetwork.rpcUrl);
+
+      let balance = BigInt(0);
+      try {
+        balance = await provider.getBalance(accounts[0]);
+      } catch {
+        console.warn('Failed to fetch native balance, using 0');
+      }
+
+      let tokens: TokenBalance[] = [];
+      try {
+        tokens = await fetchTokenBalances(accounts[0], detectedNetwork.id);
+      } catch {
+        console.warn('Failed to fetch token balances');
+      }
 
       setWallet({
         address: accounts[0],
