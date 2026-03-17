@@ -1,5 +1,5 @@
 # Tap to Earn + Ads Gas Sponsorship TODO
-Status: ✅ Plan approved. Implementing step-by-step.
+Status: ✅ Backend/contracts done. Frontend integration via new TODO.md (approved plan).
 
 ## Breakdown of Approved Plan (No API Keys - Existing Contracts)
 

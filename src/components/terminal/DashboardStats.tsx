@@ -1,3 +1,4 @@
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   BarChart3, 
@@ -8,17 +9,20 @@ import {
   DollarSign,
   Target,
   Clock,
-  Zap as ZapIcon
+  Zap as ZapIcon,
+  Award
 } from 'lucide-react';
 import { ArbitrageOpportunity } from '@/types/defi';
 import { cn } from '@/lib/utils';
-import { useEffect, useState } from 'react';
 
 interface DashboardStatsProps {
   opportunities: ArbitrageOpportunity[];
   totalProfit: number;
   successRate: number;
   isScanning: boolean;
+  points?: number;
+  adRevenue?: number;
+  adViews?: number;
 }
 
 // Animated counter hook
@@ -56,7 +60,7 @@ function useAnimatedCounter(value: number, duration: number = 1000) {
   return displayValue;
 }
 
-export function DashboardStats({ opportunities, totalProfit, successRate, isScanning }: DashboardStatsProps) {
+export function DashboardStats({ opportunities, totalProfit, successRate, isScanning, points = 0, adRevenue = 0, adViews = 0 }: DashboardStatsProps) {
   const completedOpps = opportunities.filter(o => o.status === 'completed');
   const pendingOpps = opportunities.filter(o => o.status === 'pending');
   const avgProfit = completedOpps.length > 0 
@@ -66,6 +70,8 @@ export function DashboardStats({ opportunities, totalProfit, successRate, isScan
   const animatedProfit = useAnimatedCounter(totalProfit);
   const animatedSuccess = useAnimatedCounter(successRate * 100);
   const animatedAvg = useAnimatedCounter(avgProfit);
+  const animatedPoints = useAnimatedCounter(points);
+  const animatedRevenue = useAnimatedCounter(adRevenue);
 
   const networkStats = opportunities.reduce((acc, opp) => {
     acc[opp.sourceNetwork] = (acc[opp.sourceNetwork] || 0) + 1;
@@ -244,11 +250,38 @@ export function DashboardStats({ opportunities, totalProfit, successRate, isScan
         </div>
       </motion.div>
 
-      {/* Average Profit */}
+      {/* Tap Points & Ad Revenue */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
+        className="lg:col-span-2 p-5 rounded-xl border border-accent/30 bg-gradient-to-br from-accent/5 overflow-hidden"
+      >
+        <div className="absolute inset-0 bg-accent/5" />
+        <div className="relative grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div>
+            <div className="text-2xl font-bold text-accent">{Math.floor(points)}</div>
+            <div className="text-xs text-muted-foreground mt-1">Tap Points</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-accent">${(adRevenue / 100).toFixed(2)}</div>
+            <div className="text-xs text-muted-foreground mt-1">Ad Revenue Today</div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-accent">{adViews}</div>
+            <div className="text-xs text-muted-foreground mt-1">Ad Views</div>
+          </div>
+        </div>
+        <div className="mt-3 text-xs text-muted-foreground">
+          Funds gas sponsor pool for gasless trades
+        </div>
+      </motion.div>
+
+      {/* Average Profit */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.4 }}
         className="p-5 rounded-xl border border-border bg-card relative overflow-hidden"
       >
         <div className="absolute inset-0 bg-gradient-to-br from-neon-purple/5 to-transparent" />
@@ -262,16 +295,16 @@ export function DashboardStats({ opportunities, totalProfit, successRate, isScan
             </div>
             <div className={cn(
               "px-2 py-1 rounded-full text-xs font-medium",
-              animatedAvg > 0 ? "bg-accent/20 text-accent" : "bg-muted text-muted-foreground"
+              avgProfit > 0 ? "bg-accent/20 text-accent" : "bg-muted text-muted-foreground"
             )}>
-              {animatedAvg > 0 ? 'Profitable' : 'No Data'}
+              {avgProfit > 0 ? 'Profitable' : 'No Data'}
             </div>
           </div>
           <div className={cn(
             "text-3xl font-bold mb-2",
-            animatedAvg > 0 ? "text-accent text-glow-green" : "text-foreground"
+            avgProfit > 0 ? "text-accent text-glow-green" : "text-foreground"
           )}>
-            ${animatedAvg.toFixed(2)}
+            ${avgProfit.toFixed(2)}
           </div>
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-muted-foreground">

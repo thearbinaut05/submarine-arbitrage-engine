@@ -1,24 +1,37 @@
-# Fix All Linting Errors - TODO
+# Integrated Tap-to-Earn + Self-Promo Ads → Gas Sponsor Paymasters
+Status: 🚀 Implementation started (Plan approved)
 
-## Status: In Progress
+## Steps to Complete (Track Progress)
 
-### Test Files
-- [ ] src/test/abis.test.ts - Replace "any" with proper ABI types
-- [ ] src/test/hooks.test.ts - Define types for window.ethereum and private methods
-- [ ] src/test/priceFetcher.test.ts - Define types for private properties
-- [ ] src/test/setup.ts - Define types for WebSocket mock and events
+### 1. Planning & Setup [✅ Complete]
+- [✅] Update TODO_TAP_EARN_ADS.md (mark prior complete)
+- [✅] Create this TODO.md
 
-### Contract Scripts
-- [ ] contracts/scripts/deploy-single.ts - Fix constructor args and error types
-- [ ] contracts/scripts/deploy-gasless.ts - Fix error handling
-- [ ] contracts/scripts/deploy-gasless-all.ts - Fix error handling
-- [ ] contracts/scripts/deploy-all.ts - Fix error handling
-- [ ] contracts/scripts/verify-contracts.ts - Fix error handling
-- [ ] contracts/scripts/test-deployment.ts - Fix error handling
+### 2. Paymaster Config [✅ Configs exist in config.ts/contracts]
+- [ ] Read/edit contracts/GasPoolSponsor.sol (hardcode paymasters)
+- [ ] Read/edit contracts/GaslessRelayer.sol (update paymasters array)
+- [ ] execute_command: bun run deploy-gasless (or npm)
 
-### Supabase Functions
-- [ ] supabase/functions/rebalance-positions/index.ts - Define TransactionBundle type
+### 3. Ads Enhancement
+- [✅] Edit src/components/ads/AdBanner.tsx (self-promo content, auto-track)
+- [✅] Edit src/pages/Index.tsx (embed dashboard ads + useTapToEarn stats)
 
-### Verification
-- [ ] Run linting to verify all "any" types are resolved
-- [ ] Test that changes don't break functionality
+### 4. Tap UI + Tokenomics
+- [ ] Edit src/components/terminal/OpportunityCard.tsx (tap button + mini-ad)
+- [ ] Edit src/components/terminal/DashboardStats.tsx (points/pool display)
+- [ ] Edit src/hooks/useTapToEarn.ts (add redeemPoints for gas rebate)
+
+### 5. Gasless Integration
+- [ ] Edit src/components/terminal/GaslessTransactionBuilder.tsx (use embedded + sponsor)
+- [ ] Edit src/hooks/useRealArbitrage.ts (points redemption on tx)
+
+### 6. Supabase Polish
+- [ ] Edit supabase/functions/track-ad-view/index.ts (revenue → pool deposit)
+- [ ] supabase db push (add points_redeemed col if needed)
+
+### 7. Test & Demo
+- [ ] End-to-end test: Tap/ad → points/revenue → pool → gasless execute
+- [ ] execute_command: bun dev (demo app)
+
+**Next Action: Embed AdBanner in Index.tsx + tap UI**
+
