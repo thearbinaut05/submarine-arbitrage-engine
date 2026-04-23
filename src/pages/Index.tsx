@@ -93,18 +93,13 @@ const Index = () => {
   }, [realOpportunities, realExecuteOpportunity]);
 
   // Handle wallet connection with error handling
-  const handleConnect = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.ethereum) {
-      // Instead of alert, show a toast-like message via console and let the embedded wallet handle it
-      console.warn('No MetaMask detected. Use the embedded wallet in the Portfolio tab.');
-      setActiveTab('wallet');
-      return;
-    }
+  const handleConnect = useCallback(async (walletType: 'metamask' | 'bitget' | 'injected' = 'injected') => {
     setIsConnecting(true);
     try {
-      await connect();
+      await connect(walletType);
     } catch (error) {
       console.error('Failed to connect wallet:', error);
+      setActiveTab('wallet');
     } finally {
       setIsConnecting(false);
     }
