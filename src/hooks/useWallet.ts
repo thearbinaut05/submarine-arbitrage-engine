@@ -435,7 +435,7 @@ export function useWallet() {
       injectedProvider.removeListener('accountsChanged', handleAccountsChanged);
       injectedProvider.removeListener('chainChanged', handleChainChanged);
     };
-  }, [disconnect, refreshBalances]);
+  }, [wallet.isConnected, disconnect, refreshBalances]);
 
   // Cleanup on unmount
   useEffect(() => {
