@@ -31,19 +31,27 @@ const { wallet_address, ad_type = 'banner_impression', duration_seconds = 5, rev
       .from('ad_events')
       .insert(adEvent)
 
-    if (error) throw error
+    if (error) {
+      // Table missing or RLS denies — don't fail the client; log and return ok
+      console.warn('ad_events insert failed:', error.message, error.code)
+      return Response.json({ 
+        success: true, 
+        skipped: true,
+        reason: error.message,
+        message: 'Ad view acknowledged (storage unavailable)'
+      }, { headers: corsHeaders })
+    }
 
-    // Log total revenue for pool deposit tracking
     console.log(`Ad revenue logged: $${revenue_cents/100} from ${wallet_address} (${ad_type})`)
 
     return Response.json({ 
       success: true, 
-      message: 'Ad view tracked',
-      total_revenue_today: 'Query view for stats' 
+      message: 'Ad view tracked'
     }, { headers: corsHeaders })
 
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = error instanceof Error ? error.message : (typeof error === 'string' ? error : JSON.stringify(error))
+    console.error('track-ad-view error:', message)
     return Response.json({ success: false, error: message }, { 
       status: 400, 
       headers: corsHeaders 
