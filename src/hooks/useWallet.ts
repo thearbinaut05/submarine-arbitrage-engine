@@ -153,6 +153,7 @@ export interface EnhancedWalletState extends WalletState {
   tokens: TokenBalance[];
   isLoadingTokens: boolean;
   lastUpdated: number | null;
+  connectorType: 'metamask' | 'bitget' | 'injected' | null;
 }
 
 export function useWallet() {
@@ -165,9 +166,11 @@ export function useWallet() {
     tokens: [],
     isLoadingTokens: false,
     lastUpdated: null,
+    connectorType: null,
   });
 
   const providerRef = useRef<ethers.BrowserProvider | null>(null);
+  const injectedProviderRef = useRef<EthereumProvider | null>(null);
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const rpcProviderRef = useRef<ethers.JsonRpcProvider | null>(null);
 
@@ -302,6 +305,7 @@ export function useWallet() {
 
       const provider = new ethers.BrowserProvider(injected as unknown as ethers.Eip1193Provider);
       providerRef.current = provider;
+      injectedProviderRef.current = injected;
       const network = await provider.getNetwork();
 
       const chainId = Number(network.chainId);
@@ -338,6 +342,7 @@ export function useWallet() {
         tokens,
         isLoadingTokens: false,
         lastUpdated: Date.now(),
+        connectorType: walletType,
       });
 
       if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
@@ -362,15 +367,19 @@ export function useWallet() {
       tokens: [],
       isLoadingTokens: false,
       lastUpdated: null,
+      connectorType: null,
     });
+    providerRef.current = null;
+    injectedProviderRef.current = null;
   }, []);
 
   const switchNetwork = useCallback(async (network: Network) => {
-    if (typeof window === 'undefined' || !window.ethereum) return;
+    const injectedProvider = injectedProviderRef.current;
+    if (typeof window === 'undefined' || !injectedProvider) return;
 
     const config = NETWORKS[network];
     try {
-      await window.ethereum.request({
+      await injectedProvider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: `0x${config.chainId.toString(16)}` }],
       });
@@ -383,7 +392,7 @@ export function useWallet() {
     } catch (error: unknown) {
       if (error instanceof Error && 'code' in error && error.code === 4902) {
         try {
-          await window.ethereum.request({
+          await injectedProvider.request({
             method: 'wallet_addEthereumChain',
             params: [{
               chainId: `0x${config.chainId.toString(16)}`,
@@ -403,29 +412,29 @@ export function useWallet() {
 
   // Listen for account and chain changes
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.ethereum) {
-      const handleAccountsChanged = (accounts: string[]) => {
-        if (accounts.length === 0) {
-          disconnect();
-        } else {
-          setWallet(prev => ({ ...prev, address: accounts[0] }));
-          refreshBalances();
-        }
-      };
+    const injectedProvider = injectedProviderRef.current;
+    if (!injectedProvider) return;
 
-      const handleChainChanged = () => {
-        // Reload to ensure clean state
-        window.location.reload();
-      };
+    const handleAccountsChanged = (accounts: string[]) => {
+      if (accounts.length === 0) {
+        disconnect();
+      } else {
+        setWallet(prev => ({ ...prev, address: accounts[0] }));
+        refreshBalances();
+      }
+    };
 
-      window.ethereum.on('accountsChanged', handleAccountsChanged);
-      window.ethereum.on('chainChanged', handleChainChanged);
+    const handleChainChanged = () => {
+      window.location.reload();
+    };
 
-      return () => {
-        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
-        window.ethereum.removeListener('chainChanged', handleChainChanged);
-      };
-    }
+    injectedProvider.on('accountsChanged', handleAccountsChanged);
+    injectedProvider.on('chainChanged', handleChainChanged);
+
+    return () => {
+      injectedProvider.removeListener('accountsChanged', handleAccountsChanged);
+      injectedProvider.removeListener('chainChanged', handleChainChanged);
+    };
   }, [disconnect, refreshBalances]);
 
   // Cleanup on unmount
