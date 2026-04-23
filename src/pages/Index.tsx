@@ -151,7 +151,7 @@ const Index = () => {
                   totalProfit={stats.totalProfit}
                   successRate={stats.successRate}
                   isScanning={isScanning}
-                  points={points}
+                  points={points.points}
                   adRevenue={adStats.todayRevenue}
                 />
                 {/* In-App Ad Banner */}
