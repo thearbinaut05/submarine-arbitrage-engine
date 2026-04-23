@@ -16,34 +16,52 @@ import { TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
 
 interface WalletButtonProps {
   wallet: EnhancedWalletState;
-  onConnect: () => void;
+  onConnect: (walletType?: 'metamask' | 'bitget' | 'injected') => void;
   onDisconnect: () => void;
   onRefresh?: () => void;
 }
 
 export function WalletButton({ wallet, onConnect, onDisconnect, onRefresh }: WalletButtonProps) {
-  const formatAddress = (address: string) => 
+  const formatAddress = (address: string) =>
     `${address.slice(0, 6)}...${address.slice(-4)}`;
 
   if (!wallet.isConnected) {
     return (
-      <Button
-        onClick={onConnect}
-        disabled={wallet.isConnecting}
-        className="relative overflow-hidden bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/50 hover:border-primary text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300"
-      >
-        {wallet.isConnecting ? (
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-        ) : (
-          <Wallet className="w-4 h-4 mr-2" />
-        )}
-        {wallet.isConnecting ? 'Connecting...' : 'Connect Wallet'}
-        <motion.div
-          className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent"
-          animate={{ x: ['-100%', '100%'] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-        />
-      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            disabled={wallet.isConnecting}
+            className="relative overflow-hidden bg-gradient-to-r from-primary/20 to-accent/20 border border-primary/50 hover:border-primary text-primary hover:text-primary-foreground hover:bg-primary transition-all duration-300"
+          >
+            {wallet.isConnecting ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Wallet className="w-4 h-4 mr-2" />
+            )}
+            {wallet.isConnecting ? 'Connecting...' : 'Connect Wallet'}
+            <motion.div
+              className="absolute inset-0 bg-gradient-to-r from-transparent via-primary/20 to-transparent"
+              animate={{ x: ['-100%', '100%'] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+            />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onClick={() => onConnect('metamask')}>
+            <Wallet className="w-4 h-4 mr-2 text-orange-500" />
+            MetaMask
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onConnect('bitget')}>
+            <Wallet className="w-4 h-4 mr-2 text-cyan-400" />
+            Bitget Wallet
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => onConnect('injected')}>
+            <Wallet className="w-4 h-4 mr-2 text-muted-foreground" />
+            Other (injected)
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     );
   }
 
