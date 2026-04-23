@@ -22,21 +22,29 @@ export function useTapToEarn(walletAddress: string | null, network: string = 'et
   const fetchPoints = useCallback(async () => {
     if (!walletAddress) return
 
-    // user_tap_stats table is not in generated types yet; query via untyped client
-    const { data } = await (supabase as any)
-      .from('user_tap_stats')
-      .select('*')
-      .eq('wallet_address', walletAddress)
-      .eq('network', network)
-      .maybeSingle()
+    try {
+      const { data, error } = await (supabase as any)
+        .from('user_points')
+        .select('points, daily_taps, total_taps, last_tap_timestamp')
+        .eq('wallet_address', walletAddress)
+        .eq('network', network)
+        .maybeSingle()
 
-    if (data) {
-      setPoints({
-        points: data.points ?? 0,
-        dailyTaps: data.daily_taps ?? 0,
-        totalTaps: data.total_taps ?? 0,
-        lastTap: data.last_tap_timestamp || null
-      })
+      if (error) {
+        console.warn('Unable to load tap points:', error.message ?? error)
+        return
+      }
+
+      if (data) {
+        setPoints({
+          points: data.points ?? 0,
+          dailyTaps: data.daily_taps ?? 0,
+          totalTaps: data.total_taps ?? 0,
+          lastTap: data.last_tap_timestamp || null
+        })
+      }
+    } catch (error) {
+      console.warn('Unable to load tap points:', error)
     }
   }, [walletAddress, network])
 
@@ -51,19 +59,29 @@ export function useTapToEarn(walletAddress: string | null, network: string = 'et
         body: JSON.stringify({ wallet_address: walletAddress, network })
       })
 
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.warn('Tap-to-earn request failed:', errorText)
+        return false
+      }
+
       const result = await response.json()
       if (result.success) {
         setPoints(prev => ({
           ...prev,
           points: result.points,
           dailyTaps: result.daily_taps,
-          totalTaps: result.daily_taps + 1 // Approximate
+          totalTaps: typeof result.total_taps === 'number' ? result.total_taps : prev.totalTaps + 1,
+          lastTap: new Date().toISOString()
         }))
         setIsTapped(true)
         setTimeout(() => setIsTapped(false), 3000)
         return true
       }
-    } catch {}
+      console.warn('Tap-to-earn rejected:', result.error ?? 'Unknown error')
+    } catch (error) {
+      console.warn('Tap-to-earn request failed:', error)
+    }
     finally {
       setLoading(false)
     }
@@ -73,21 +91,40 @@ export function useTapToEarn(walletAddress: string | null, network: string = 'et
   const viewAd = useCallback(async (revenueCents = 0.1) => {
     if (!walletAddress) return
 
-    await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-ad-view`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ wallet_address: walletAddress, revenue_cents: revenueCents })
-    })
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/track-ad-view`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet_address: walletAddress, revenue_cents: revenueCents })
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.warn('Ad tracking request failed:', errorText)
+      }
+    } catch (error) {
+      console.warn('Ad tracking request failed:', error)
+    }
   }, [walletAddress])
 
   const fetchAdStats = useCallback(async () => {
-    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-gas-pool`)
-    const result = await response.json()
-    if (result.success) {
-      setAdStats({ 
-        todayRevenue: result.today_ad_revenue_cents || 0, 
-        totalViews: result.total_logs || 0 
-      })
+    try {
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/check-gas-pool`)
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.warn('Gas pool stats request failed:', errorText)
+        return
+      }
+
+      const result = await response.json()
+      if (result.success) {
+        setAdStats({ 
+          todayRevenue: Number(result.today_ad_revenue_cents || 0), 
+          totalViews: Number(result.total_logs || 0) 
+        })
+      }
+    } catch (error) {
+      console.warn('Gas pool stats request failed:', error)
     }
   }, [])
 

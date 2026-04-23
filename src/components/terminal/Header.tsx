@@ -10,7 +10,7 @@ interface HeaderProps {
   successRate: number;
   isScanning: boolean;
   wallet: EnhancedWalletState;
-  onConnect: () => void;
+  onConnect: (walletType?: 'metamask' | 'bitget' | 'injected') => void;
   onDisconnect: () => void;
   onSwitchNetwork: (network: Network) => void;
   onRefreshBalances: () => void;

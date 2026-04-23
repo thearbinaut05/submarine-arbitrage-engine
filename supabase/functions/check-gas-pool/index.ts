@@ -20,29 +20,36 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
-    // Pool stats
-    const { data: recentDeposits } = await supabaseClient
+    const { data: recentDeposits, error: depositsError } = await supabaseClient
       .from('gas_pool_logs')
       .select('amount_eth, sponsor_type, funded_by_wallet')
       .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
       .order('created_at', { ascending: false })
       .limit(10)
 
-    // Total ad revenue today (for dashboard)
-    const { data: todayRevenue } = await supabaseClient
+    const { data: todayRevenueRows, error: revenueError } = await supabaseClient
       .from('ad_events')
       .select('estimated_revenue')
       .gte('created_at', new Date(Date.now() - 24*60*60*1000).toISOString())
-      .single()
+ 
+    if (depositsError) {
+      console.warn('gas_pool_logs query failed:', depositsError.message, depositsError.code)
+    }
 
-    const totalTodayRevenue = todayRevenue ? (todayRevenue.estimated_revenue * 100).toFixed(2) : '0.00'
+    if (revenueError) {
+      console.warn('ad_events revenue query failed:', revenueError.message, revenueError.code)
+    }
+
+    const totalTodayRevenue = Array.isArray(todayRevenueRows)
+      ? todayRevenueRows.reduce((sum, row) => sum + Number(row.estimated_revenue || 0), 0) * 100
+      : 0
 
     return Response.json({ 
       success: true,
       pool_contract: GAS_POOL_CONTRACT,
       recent_deposits: recentDeposits || [],
       today_ad_revenue_cents: totalTodayRevenue,
-      total_logs: 'Query gas_pool_logs for full history'
+      total_logs: Array.isArray(recentDeposits) ? recentDeposits.length : 0
     }, { headers: corsHeaders })
 
   } catch (error) {

@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_events: {
+        Row: {
+          ad_type: string
+          created_at: string
+          duration_seconds: number
+          estimated_revenue: number
+          id: string
+          wallet_address: string | null
+        }
+        Insert: {
+          ad_type?: string
+          created_at?: string
+          duration_seconds?: number
+          estimated_revenue?: number
+          id?: string
+          wallet_address?: string | null
+        }
+        Update: {
+          ad_type?: string
+          created_at?: string
+          duration_seconds?: number
+          estimated_revenue?: number
+          id?: string
+          wallet_address?: string | null
+        }
+        Relationships: []
+      }
       arbitrage_opportunities: {
         Row: {
           amount_in: number
@@ -119,6 +146,30 @@ export type Database = {
         }
         Relationships: []
       }
+      gas_pool_logs: {
+        Row: {
+          amount_eth: number
+          created_at: string
+          funded_by_wallet: string | null
+          id: string
+          sponsor_type: string
+        }
+        Insert: {
+          amount_eth?: number
+          created_at?: string
+          funded_by_wallet?: string | null
+          id?: string
+          sponsor_type: string
+        }
+        Update: {
+          amount_eth?: number
+          created_at?: string
+          funded_by_wallet?: string | null
+          id?: string
+          sponsor_type?: string
+        }
+        Relationships: []
+      }
       transactions: {
         Row: {
           created_at: string
@@ -180,6 +231,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_points: {
+        Row: {
+          created_at: string
+          daily_taps: number
+          id: string
+          last_tap_timestamp: string | null
+          network: Database["public"]["Enums"]["network_type"]
+          points: number
+          total_taps: number
+          updated_at: string
+          wallet_address: string
+        }
+        Insert: {
+          created_at?: string
+          daily_taps?: number
+          id?: string
+          last_tap_timestamp?: string | null
+          network?: Database["public"]["Enums"]["network_type"]
+          points?: number
+          total_taps?: number
+          updated_at?: string
+          wallet_address: string
+        }
+        Update: {
+          created_at?: string
+          daily_taps?: number
+          id?: string
+          last_tap_timestamp?: string | null
+          network?: Database["public"]["Enums"]["network_type"]
+          points?: number
+          total_taps?: number
+          updated_at?: string
+          wallet_address?: string
+        }
+        Relationships: []
       }
       user_settings: {
         Row: {
