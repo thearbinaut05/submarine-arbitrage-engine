@@ -243,19 +243,52 @@ export function useWallet() {
     }
   }, [wallet.address, wallet.network, getRpcProvider, fetchTokenBalances]);
 
-  const connect = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.ethereum) {
-      console.error('No wallet detected. Please install MetaMask or another wallet.');
+  const connect = useCallback(async (walletType: 'metamask' | 'bitget' | 'injected' = 'injected') => {
+    if (typeof window === 'undefined') return;
+
+    // Resolve the right injected provider based on user choice
+    const resolveProvider = (): EthereumProvider | null => {
+      const eth = window.ethereum as (EthereumProvider & {
+        providers?: EthereumProvider[];
+        isMetaMask?: boolean;
+        isBitKeep?: boolean;
+        isBitget?: boolean;
+      }) | undefined;
+      const bitget = (window as unknown as { bitkeep?: { ethereum?: EthereumProvider } }).bitkeep?.ethereum
+        ?? ((window as unknown as { bitgetWallet?: EthereumProvider }).bitgetWallet);
+
+      if (walletType === 'bitget') {
+        if (bitget) return bitget;
+        const fromList = eth?.providers?.find(p => (p as { isBitKeep?: boolean; isBitget?: boolean }).isBitKeep || (p as { isBitget?: boolean }).isBitget);
+        if (fromList) return fromList;
+        if (eth && ((eth as { isBitKeep?: boolean }).isBitKeep || (eth as { isBitget?: boolean }).isBitget)) return eth;
+        return null;
+      }
+      if (walletType === 'metamask') {
+        const fromList = eth?.providers?.find(p => (p as { isMetaMask?: boolean }).isMetaMask && !(p as { isBitKeep?: boolean }).isBitKeep);
+        if (fromList) return fromList;
+        if (eth?.isMetaMask && !(eth as { isBitKeep?: boolean }).isBitKeep) return eth;
+        return null;
+      }
+      return eth ?? null;
+    };
+
+    const injected = resolveProvider();
+    if (!injected) {
+      const label = walletType === 'bitget' ? 'Bitget Wallet' : walletType === 'metamask' ? 'MetaMask' : 'a Web3 wallet';
+      console.error(`${label} not detected. Please install the extension.`);
+      if (walletType === 'bitget') {
+        window.open('https://web3.bitget.com/en/wallet-download', '_blank');
+      }
       return;
     }
 
     setWallet(prev => ({ ...prev, isConnecting: true }));
 
     try {
-      // Request accounts first before creating provider to catch rejection early
       let accounts: string[];
       try {
-        accounts = await window.ethereum.request({ method: 'eth_requestAccounts' }) as string[];
+        accounts = await injected.request({ method: 'eth_requestAccounts' }) as string[];
       } catch (reqError) {
         console.warn('Wallet connection rejected by user:', reqError);
         setWallet(prev => ({ ...prev, isConnecting: false }));
@@ -263,15 +296,14 @@ export function useWallet() {
       }
 
       if (!accounts || accounts.length === 0) {
-        console.warn('No accounts returned from wallet');
         setWallet(prev => ({ ...prev, isConnecting: false }));
         return;
       }
 
-      const provider = new ethers.BrowserProvider(window.ethereum);
+      const provider = new ethers.BrowserProvider(injected as unknown as ethers.Eip1193Provider);
       providerRef.current = provider;
       const network = await provider.getNetwork();
-      
+
       const chainId = Number(network.chainId);
       const detectedNetwork = Object.values(NETWORKS).find(n => n.chainId === chainId);
 
@@ -281,7 +313,6 @@ export function useWallet() {
         return;
       }
 
-      // Reset RPC provider for the new network
       rpcProviderRef.current = new ethers.JsonRpcProvider(detectedNetwork.rpcUrl);
 
       let balance = BigInt(0);
@@ -309,12 +340,8 @@ export function useWallet() {
         lastUpdated: Date.now(),
       });
 
-      // Start periodic balance refresh (every 30 seconds)
-      if (refreshIntervalRef.current) {
-        clearInterval(refreshIntervalRef.current);
-      }
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
       refreshIntervalRef.current = setInterval(refreshBalances, 30000);
-
     } catch (error) {
       console.error('Connection failed:', error);
       setWallet(prev => ({ ...prev, isConnecting: false }));
