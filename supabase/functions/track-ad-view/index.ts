@@ -43,7 +43,8 @@ const { wallet_address, ad_type = 'banner_impression', duration_seconds = 5, rev
     }, { headers: corsHeaders })
 
   } catch (error) {
-    return Response.json({ success: false, error: error.message }, { 
+    const message = error instanceof Error ? error.message : String(error)
+    return Response.json({ success: false, error: message }, { 
       status: 400, 
       headers: corsHeaders 
     })
