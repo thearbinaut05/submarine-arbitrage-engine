@@ -22,18 +22,19 @@ export function useTapToEarn(walletAddress: string | null, network: string = 'et
   const fetchPoints = useCallback(async () => {
     if (!walletAddress) return
 
-    const { data } = await supabase
+    // user_tap_stats table is not in generated types yet; query via untyped client
+    const { data } = await (supabase as any)
       .from('user_tap_stats')
       .select('*')
       .eq('wallet_address', walletAddress)
       .eq('network', network)
-      .single()
+      .maybeSingle()
 
     if (data) {
       setPoints({
-        points: data.points,
-        dailyTaps: data.daily_taps,
-        totalTaps: data.total_taps,
+        points: data.points ?? 0,
+        dailyTaps: data.daily_taps ?? 0,
+        totalTaps: data.total_taps ?? 0,
         lastTap: data.last_tap_timestamp || null
       })
     }
