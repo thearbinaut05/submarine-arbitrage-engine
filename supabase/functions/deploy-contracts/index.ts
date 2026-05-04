@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { ethers } from "https://esm.sh/ethers@6.16.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -444,27 +445,60 @@ serve(async (req) => {
   }
 
   try {
+    // Authenticate caller and require admin role
+    const authHeader = req.headers.get('Authorization') || '';
+    if (!authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL')!,
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+    );
+    const token = authHeader.replace('Bearer ', '');
+    const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(token);
+    if (authError || !userData?.user) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const { data: isAdmin } = await supabaseAdmin.rpc('has_role', {
+      _user_id: userData.user.id, _role: 'admin',
+    });
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ success: false, error: 'Forbidden' }), {
+        status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const deployerPrivateKey = Deno.env.get("DEPLOYER_PRIVATE_KEY");
     const gelatoApiKey = Deno.env.get("GELATO_API_KEY") || null;
 
     if (!deployerPrivateKey) {
-      throw new Error("DEPLOYER_PRIVATE_KEY not configured. Please add it in your backend secrets.");
+      return new Response(JSON.stringify({ success: false, error: 'Service configuration error', code: 'CONFIG_ERROR' }), {
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const { network, contracts, useCreate2 = false } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { network, contracts, useCreate2 = false } = body ?? {};
 
-    if (!network || !NETWORK_CONFIG[network]) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: `Invalid network: ${network}. Supported: ${Object.keys(NETWORK_CONFIG).join(", ")}`,
-          supportedNetworks: Object.keys(NETWORK_CONFIG),
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+    const allowedNetworks = Object.keys(NETWORK_CONFIG);
+    if (typeof network !== 'string' || !allowedNetworks.includes(network)) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid network', code: 'VALIDATION_ERROR' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (contracts !== undefined && (!Array.isArray(contracts) || contracts.length > 20 || !contracts.every((c) => typeof c === 'string' && c.length <= 64))) {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid contracts list', code: 'VALIDATION_ERROR' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (typeof useCreate2 !== 'boolean') {
+      return new Response(JSON.stringify({ success: false, error: 'Invalid useCreate2', code: 'VALIDATION_ERROR' }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const config = NETWORK_CONFIG[network];
@@ -623,13 +657,14 @@ serve(async (req) => {
     );
 
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error("Deployment error:", errorMessage);
+    const requestId = crypto.randomUUID();
+    console.error(`[deploy-contracts ${requestId}] error:`, error);
     return new Response(
       JSON.stringify({
         success: false,
-        error: errorMessage,
-        hint: "Make sure DEPLOYER_PRIVATE_KEY is set and the wallet has funds, or add GELATO_API_KEY for sponsored deployment.",
+        error: 'An unexpected error occurred. Please contact support.',
+        code: 'UNKNOWN_ERROR',
+        requestId,
       }),
       {
         status: 500,
