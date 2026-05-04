@@ -271,7 +271,7 @@ contract SubmarineTransactionManager {
      * @notice Internal CREATE2 deployment
      */
     function _deployCreate2(
-        bytes calldadata bytecode,
+        bytes calldata bytecode,
         bytes32 salt
     ) internal returns (address deployedAddress) {
         assembly {
