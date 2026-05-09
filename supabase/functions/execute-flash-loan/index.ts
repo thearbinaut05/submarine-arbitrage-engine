@@ -13,6 +13,7 @@ import {
   BALANCER_VAULT,
   getBestFlashLoanProvider,
 } from "../_shared/deployed-protocols.ts";
+import { FlashLoanSchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -770,7 +771,10 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    const body: FlashLoanRequest = await req.json();
+    const rawBody = await req.json();
+    const validation = validateOrError(FlashLoanSchema, rawBody, corsHeaders);
+    if (!validation.ok) return validation.response;
+    const body: FlashLoanRequest = { ...rawBody, ...validation.data } as FlashLoanRequest;
     const {
       network,
       tokenIn,
@@ -1242,10 +1246,12 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('Flash loan execution error:', error);
+    const sanitized = sanitizeError(error, 'execute-flash-loan');
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
       executionTimeMs: Date.now() - startTime,
     }), {
       status: 500,

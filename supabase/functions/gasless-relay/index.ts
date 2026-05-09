@@ -9,6 +9,7 @@ import {
   SCANNER_CONFIG,
   PAYMASTERS,
 } from "../_shared/mainnet-config.ts";
+import { GaslessRelaySchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -273,7 +274,10 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    const body: GaslessRequest = await req.json();
+    const rawBody = await req.json();
+    const validation = validateOrError(GaslessRelaySchema, rawBody, corsHeaders);
+    if (!validation.ok) return validation.response;
+    const body: GaslessRequest = { ...rawBody, ...validation.data } as GaslessRequest;
     const {
       network,
       to,
@@ -546,25 +550,27 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     } catch (txError) {
-      console.error('Direct TX error:', txError);
       if (transaction) {
         await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
       }
+      const sanitized = sanitizeError(txError, 'gasless-relay-tx');
       return new Response(JSON.stringify({
         success: false,
-        error: 'Transaction execution failed',
-        details: txError instanceof Error ? txError.message : String(txError),
+        error: sanitized.message,
+        code: sanitized.code,
+        requestId: sanitized.requestId,
         transactionId: transaction?.id,
         executionTimeMs: Date.now() - startTime,
       }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
   } catch (error) {
-    console.error('Gasless relay error:', error);
+    const sanitized = sanitizeError(error, 'gasless-relay');
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      code: 'INTERNAL_ERROR',
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
       executionTimeMs: Date.now() - startTime,
     }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }

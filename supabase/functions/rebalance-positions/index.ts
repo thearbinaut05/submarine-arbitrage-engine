@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { RebalanceSchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -98,7 +99,10 @@ serve(async (req) => {
       });
     }
 
-    const body: RebalanceRequest = await req.json();
+    const rawBody = await req.json();
+    const validation = validateOrError(RebalanceSchema, rawBody, corsHeaders);
+    if (!validation.ok) return validation.response;
+    const body: RebalanceRequest = { ...rawBody, ...validation.data } as RebalanceRequest;
     const { network, positions, targetHealthFactor, walletAddress, useFlashLoan, useGelato } = body;
 
     // Validate network
@@ -199,9 +203,11 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Rebalance error:', error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    const sanitized = sanitizeError(error, 'rebalance-positions');
+    return new Response(JSON.stringify({
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
