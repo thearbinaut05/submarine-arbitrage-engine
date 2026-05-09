@@ -10,6 +10,7 @@ import {
   PAYMASTERS,
 } from "../_shared/mainnet-config.ts";
 import { GaslessRelaySchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
+import { isBitgetWallet } from "../_shared/bitget-adapter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
