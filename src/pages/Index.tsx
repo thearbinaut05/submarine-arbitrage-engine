@@ -248,6 +248,9 @@ const Index = () => {
           </motion.div>
         </main>
       </div>
+
+      {/* AI Wallet Assistant (Bitget skill style) */}
+      <WalletAssistant walletAddress={wallet.address} network={wallet.network} />
     </div>
   );
 };
