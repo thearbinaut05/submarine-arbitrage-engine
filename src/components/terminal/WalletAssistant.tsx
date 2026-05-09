@@ -148,7 +148,7 @@ export function WalletAssistant({ walletAddress, network }: WalletAssistantProps
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the terminal\u2026"
+                placeholder="Ask the terminal…"
                 disabled={loading}
                 className="flex-1 bg-muted/30 border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary/60"
               />
