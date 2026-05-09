@@ -293,6 +293,10 @@ serve(async (req) => {
       enforceRecipient,
     } = body;
 
+    if (isBitgetWallet(body.walletType)) {
+      console.log(`[gasless-relay] Bitget wallet route active for ${rawWalletAddress} on ${network}`);
+    }
+
     if (!isValidAddress(rawWalletAddress)) {
       return new Response(JSON.stringify({
         success: false,
