@@ -563,12 +563,24 @@ serve(async (req) => {
       }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+      const sanitized = sanitizeError(txError, 'gasless-relay-tx');
+      return new Response(JSON.stringify({
+        success: false,
+        error: sanitized.message,
+        code: sanitized.code,
+        requestId: sanitized.requestId,
+        transactionId: transaction?.id,
+        executionTimeMs: Date.now() - startTime,
+      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
   } catch (error) {
-    console.error('Gasless relay error:', error);
+    const sanitized = sanitizeError(error, 'gasless-relay');
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-      code: 'INTERNAL_ERROR',
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
       executionTimeMs: Date.now() - startTime,
     }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
