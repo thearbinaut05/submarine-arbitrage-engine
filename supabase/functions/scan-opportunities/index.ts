@@ -12,6 +12,7 @@ import {
   SCANNER_CONFIG,
   EXPLORER_URLS,
 } from "../_shared/mainnet-config.ts";
+import { ScanSchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
