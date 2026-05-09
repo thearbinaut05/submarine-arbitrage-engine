@@ -671,14 +671,17 @@ serve(async (req: Request) => {
   const startTime = Date.now();
 
   try {
-    const body: ScanRequest = await req.json();
+    const rawBody = await req.json();
+    const validation = validateOrError(ScanSchema, rawBody, corsHeaders);
+    if (!validation.ok) return validation.response;
+    const body: ScanRequest = { ...rawBody, ...validation.data } as ScanRequest;
     const {
       networks,
       minProfitPercent = SCANNER_CONFIG.minProfitPercent,
       minProfitUsd = SCANNER_CONFIG.minProfitUsd,
     } = body;
 
-    const validNetworks = networks.filter(n => RPC_ENDPOINTS[n]);
+    const validNetworks = (networks || []).filter(n => RPC_ENDPOINTS[n]);
     if (validNetworks.length === 0) {
       return new Response(JSON.stringify({ 
         error: 'No valid networks provided',
