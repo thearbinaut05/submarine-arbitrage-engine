@@ -550,19 +550,9 @@ serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     } catch (txError) {
-      console.error('Direct TX error:', txError);
       if (transaction) {
         await supabase.from('transactions').update({ status: 'failed' }).eq('id', transaction.id);
       }
-      return new Response(JSON.stringify({
-        success: false,
-        error: 'Transaction execution failed',
-        details: txError instanceof Error ? txError.message : String(txError),
-        transactionId: transaction?.id,
-        executionTimeMs: Date.now() - startTime,
-      }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
-    }
-
       const sanitized = sanitizeError(txError, 'gasless-relay-tx');
       return new Response(JSON.stringify({
         success: false,
