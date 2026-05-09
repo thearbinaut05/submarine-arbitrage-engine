@@ -123,7 +123,7 @@ export function WalletAssistant({ walletAddress, network }: WalletAssistantProps
               ))}
               {loading && (
                 <div className="mr-auto flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" /> thinking\u2026
+                  <Loader2 className="h-3 w-3 animate-spin" /> {'thinking…'}
                 </div>
               )}
             </div>
