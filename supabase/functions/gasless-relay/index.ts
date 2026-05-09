@@ -9,6 +9,7 @@ import {
   SCANNER_CONFIG,
   PAYMASTERS,
 } from "../_shared/mainnet-config.ts";
+import { GaslessRelaySchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
