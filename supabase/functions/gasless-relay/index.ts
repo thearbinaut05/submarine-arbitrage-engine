@@ -27,6 +27,7 @@ interface GaslessRequest {
   deadline?: number;
   signature?: string;
   walletAddress: string;
+  walletType?: 'metamask' | 'bitget' | 'injected' | 'embedded';
   isSubmarine?: boolean;
   opportunityId?: string;
   priorityFee?: string;
