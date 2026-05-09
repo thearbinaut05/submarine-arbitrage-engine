@@ -13,6 +13,7 @@ import {
   BALANCER_VAULT,
   getBestFlashLoanProvider,
 } from "../_shared/deployed-protocols.ts";
+import { FlashLoanSchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
