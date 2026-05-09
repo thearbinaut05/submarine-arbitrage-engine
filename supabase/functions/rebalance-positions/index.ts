@@ -203,9 +203,11 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Rebalance error:', error);
-    return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+    const sanitized = sanitizeError(error, 'rebalance-positions');
+    return new Response(JSON.stringify({
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
