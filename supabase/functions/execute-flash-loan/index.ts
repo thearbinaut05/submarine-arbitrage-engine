@@ -1246,10 +1246,12 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('Flash loan execution error:', error);
+    const sanitized = sanitizeError(error, 'execute-flash-loan');
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
       executionTimeMs: Date.now() - startTime,
     }), {
       status: 500,
