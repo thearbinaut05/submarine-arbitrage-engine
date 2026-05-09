@@ -446,13 +446,36 @@ export function useWallet() {
     };
   }, []);
 
-  return { 
-    wallet, 
-    connect, 
-    disconnect, 
-    switchNetwork, 
+  const signTypedData = useCallback(async (typedData: {
+    domain: Record<string, unknown>;
+    types: Record<string, Array<{ name: string; type: string }>>;
+    primaryType: string;
+    message: Record<string, unknown>;
+  }) => {
+    const injected = injectedProviderRef.current;
+    if (!injected || !wallet.address) throw new Error('Wallet not connected');
+    // Bitget + MetaMask both support eth_signTypedData_v4
+    const { EIP712Domain, ...filteredTypes } = typedData.types as Record<string, unknown>;
+    void EIP712Domain;
+    const payload = JSON.stringify({
+      ...typedData,
+      types: { EIP712Domain: typedData.types.EIP712Domain, ...filteredTypes },
+    });
+    const sig = await injected.request({
+      method: 'eth_signTypedData_v4',
+      params: [wallet.address, payload],
+    });
+    return sig as string;
+  }, [wallet.address]);
+
+  return {
+    wallet,
+    connect,
+    disconnect,
+    switchNetwork,
     networks: NETWORKS,
     refreshBalances,
+    signTypedData,
   };
 }
 
