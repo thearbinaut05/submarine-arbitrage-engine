@@ -274,7 +274,10 @@ serve(async (req) => {
       userId = user?.id ?? null;
     }
 
-    const body: GaslessRequest = await req.json();
+    const rawBody = await req.json();
+    const validation = validateOrError(GaslessRelaySchema, rawBody, corsHeaders);
+    if (!validation.ok) return validation.response;
+    const body: GaslessRequest = { ...rawBody, ...validation.data } as GaslessRequest;
     const {
       network,
       to,
