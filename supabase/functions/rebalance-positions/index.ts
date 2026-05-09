@@ -99,7 +99,10 @@ serve(async (req) => {
       });
     }
 
-    const body: RebalanceRequest = await req.json();
+    const rawBody = await req.json();
+    const validation = validateOrError(RebalanceSchema, rawBody, corsHeaders);
+    if (!validation.ok) return validation.response;
+    const body: RebalanceRequest = { ...rawBody, ...validation.data } as RebalanceRequest;
     const { network, positions, targetHealthFactor, walletAddress, useFlashLoan, useGelato } = body;
 
     // Validate network
