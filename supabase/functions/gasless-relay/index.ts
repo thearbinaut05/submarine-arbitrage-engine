@@ -10,6 +10,7 @@ import {
   PAYMASTERS,
 } from "../_shared/mainnet-config.ts";
 import { GaslessRelaySchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
+import { isBitgetWallet } from "../_shared/bitget-adapter.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,6 +28,7 @@ interface GaslessRequest {
   deadline?: number;
   signature?: string;
   walletAddress: string;
+  walletType?: 'metamask' | 'bitget' | 'injected' | 'embedded';
   isSubmarine?: boolean;
   opportunityId?: string;
   priorityFee?: string;
@@ -290,6 +292,10 @@ serve(async (req) => {
       enforceGasless = false,
       enforceRecipient,
     } = body;
+
+    if (isBitgetWallet(body.walletType)) {
+      console.log(`[gasless-relay] Bitget wallet route active for ${rawWalletAddress} on ${network}`);
+    }
 
     if (!isValidAddress(rawWalletAddress)) {
       return new Response(JSON.stringify({

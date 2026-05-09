@@ -26,6 +26,7 @@ export const GaslessRelaySchema = z.object({
   deadline: z.number().int().positive(),
   signature: z.string().regex(/^0x[a-fA-F0-9]{130}$/, 'Invalid signature').optional(),
   walletAddress: ethAddress,
+  walletType: z.enum(['metamask', 'bitget', 'injected', 'embedded']).optional(),
   isSubmarine: z.boolean().optional(),
   opportunityId: z.string().uuid().optional(),
 }).passthrough();

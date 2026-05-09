@@ -20,6 +20,7 @@ import { GaslessTransactionBuilder } from '@/components/terminal/GaslessTransact
 import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
+import { WalletAssistant } from '@/components/terminal/WalletAssistant';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { useTapToEarn } from '@/hooks/useTapToEarn';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
@@ -247,6 +248,9 @@ const Index = () => {
           </motion.div>
         </main>
       </div>
+
+      {/* AI Wallet Assistant (Bitget skill style) */}
+      <WalletAssistant walletAddress={wallet.address} network={wallet.network} />
     </div>
   );
 };
