@@ -781,9 +781,11 @@ serve(async (req: Request) => {
     });
 
   } catch (error) {
-    console.error('Scanner error:', error);
+    const sanitized = sanitizeError(error, 'scan-opportunities');
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: sanitized.message,
+      code: sanitized.code,
+      requestId: sanitized.requestId,
       success: false,
       scanDurationMs: Date.now() - startTime,
     }), {
