@@ -108,6 +108,52 @@ const Index = () => {
     }
   }, [connect]);
 
+  // Assistant action dispatcher — deep links + wallet/trading control
+  const handleAssistantAction = useCallback(async (action: AssistantAction) => {
+    try {
+      switch (action.type) {
+        case 'open_tab':
+          setActiveTab(action.tab);
+          break;
+        case 'select_opportunity':
+          setSelectedOpportunityId(action.opportunityId);
+          setActiveTab('scanner');
+          setTimeout(() => {
+            document.getElementById(`opp-${action.opportunityId}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 250);
+          toast({ title: 'Opportunity selected', description: 'Scroll to the highlighted card.' });
+          break;
+        case 'execute_opportunity':
+          setSelectedOpportunityId(action.opportunityId);
+          setActiveTab('scanner');
+          await handleExecute(action.opportunityId);
+          break;
+        case 'switch_network':
+          await switchNetwork(action.network as Network);
+          break;
+        case 'start_scanner':
+          await handleStartScanning();
+          break;
+        case 'stop_scanner':
+          handleStopScanning();
+          break;
+        case 'refresh_balances':
+          await refreshBalances();
+          break;
+        case 'connect_wallet':
+          await handleConnect((action.walletType as 'metamask' | 'bitget' | 'injected') ?? 'injected');
+          break;
+        case 'disconnect_wallet':
+          disconnect();
+          break;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Action failed';
+      toast({ title: 'Assistant action failed', description: msg, variant: 'destructive' });
+    }
+  }, [handleExecute, switchNetwork, handleStartScanning, handleStopScanning, refreshBalances, handleConnect, disconnect]);
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Background Effects */}
@@ -252,7 +298,7 @@ const Index = () => {
       </div>
 
       {/* AI Wallet Assistant (Bitget skill style) */}
-      <WalletAssistant walletAddress={wallet.address} network={wallet.network} />
+      <WalletAssistant walletAddress={wallet.address} network={wallet.network} onAction={handleAssistantAction} />
     </div>
   );
 };
