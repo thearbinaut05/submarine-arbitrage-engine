@@ -234,6 +234,7 @@ const Index = () => {
                       opportunities={combinedOpportunities}
                       onExecute={handleExecute}
                       isScanning={isScanning}
+                      selectedOpportunityId={selectedOpportunityId}
                     />
                   </div>
                 </div>
@@ -285,6 +286,7 @@ const Index = () => {
                       opportunities={combinedOpportunities}
                       onExecute={handleExecute}
                       isScanning={isScanning}
+                      selectedOpportunityId={selectedOpportunityId}
                     />
                   </div>
                 </div>
