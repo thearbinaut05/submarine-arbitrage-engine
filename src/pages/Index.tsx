@@ -20,7 +20,8 @@ import { GaslessTransactionBuilder } from '@/components/terminal/GaslessTransact
 import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
-import { WalletAssistant } from '@/components/terminal/WalletAssistant';
+import { WalletAssistant, type AssistantAction } from '@/components/terminal/WalletAssistant';
+import { toast } from '@/hooks/use-toast';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { useTapToEarn } from '@/hooks/useTapToEarn';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
@@ -34,6 +35,7 @@ import { cn } from '@/lib/utils';
 const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isConnecting, setIsConnecting] = useState(false);
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(null);
   const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances } = useWallet();
 
   // Tap to earn
@@ -105,6 +107,52 @@ const Index = () => {
       setIsConnecting(false);
     }
   }, [connect]);
+
+  // Assistant action dispatcher — deep links + wallet/trading control
+  const handleAssistantAction = useCallback(async (action: AssistantAction) => {
+    try {
+      switch (action.type) {
+        case 'open_tab':
+          setActiveTab(action.tab);
+          break;
+        case 'select_opportunity':
+          setSelectedOpportunityId(action.opportunityId);
+          setActiveTab('scanner');
+          setTimeout(() => {
+            document.getElementById(`opp-${action.opportunityId}`)
+              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 250);
+          toast({ title: 'Opportunity selected', description: 'Scroll to the highlighted card.' });
+          break;
+        case 'execute_opportunity':
+          setSelectedOpportunityId(action.opportunityId);
+          setActiveTab('scanner');
+          await handleExecute(action.opportunityId);
+          break;
+        case 'switch_network':
+          await switchNetwork(action.network as Network);
+          break;
+        case 'start_scanner':
+          await handleStartScanning();
+          break;
+        case 'stop_scanner':
+          handleStopScanning();
+          break;
+        case 'refresh_balances':
+          await refreshBalances();
+          break;
+        case 'connect_wallet':
+          await handleConnect((action.walletType as 'metamask' | 'bitget' | 'injected') ?? 'injected');
+          break;
+        case 'disconnect_wallet':
+          disconnect();
+          break;
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Action failed';
+      toast({ title: 'Assistant action failed', description: msg, variant: 'destructive' });
+    }
+  }, [handleExecute, switchNetwork, handleStartScanning, handleStopScanning, refreshBalances, handleConnect, disconnect]);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -186,6 +234,7 @@ const Index = () => {
                       opportunities={combinedOpportunities}
                       onExecute={handleExecute}
                       isScanning={isScanning}
+                      selectedOpportunityId={selectedOpportunityId}
                     />
                   </div>
                 </div>
@@ -237,6 +286,7 @@ const Index = () => {
                       opportunities={combinedOpportunities}
                       onExecute={handleExecute}
                       isScanning={isScanning}
+                      selectedOpportunityId={selectedOpportunityId}
                     />
                   </div>
                 </div>
@@ -250,7 +300,7 @@ const Index = () => {
       </div>
 
       {/* AI Wallet Assistant (Bitget skill style) */}
-      <WalletAssistant walletAddress={wallet.address} network={wallet.network} />
+      <WalletAssistant walletAddress={wallet.address} network={wallet.network} onAction={handleAssistantAction} />
     </div>
   );
 };

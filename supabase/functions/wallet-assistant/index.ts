@@ -8,8 +8,21 @@ const corsHeaders = {
 };
 
 const SUPPORTED_NETWORKS = ['ethereum', 'arbitrum', 'polygon', 'bsc', 'optimism', 'base', 'avalanche'];
+const VALID_TABS = ['dashboard', 'scanner', 'wallet', 'gasless', 'rebalance'];
 
-// ---------- Tool implementations (server-side only) ----------
+// ---------- Action descriptors (consumed by client) ----------
+type ClientAction =
+  | { type: 'open_tab'; tab: string; label: string }
+  | { type: 'select_opportunity'; opportunityId: string; label: string }
+  | { type: 'execute_opportunity'; opportunityId: string; label: string }
+  | { type: 'switch_network'; network: string; label: string }
+  | { type: 'start_scanner'; label: string }
+  | { type: 'stop_scanner'; label: string }
+  | { type: 'refresh_balances'; label: string }
+  | { type: 'connect_wallet'; walletType?: string; label: string }
+  | { type: 'disconnect_wallet'; label: string };
+
+// ---------- Tool implementations ----------
 
 async function rpcCall(network: string, method: string, params: unknown[]): Promise<unknown> {
   const rpcs = RPC_ENDPOINTS[network];
@@ -70,14 +83,35 @@ async function prepareTrade(supabase: ReturnType<typeof createClient>, opportuni
   if (!data) throw new Error('Opportunity not found');
   return {
     opportunityId,
-    instructions: 'Use the Scanner panel \u2192 Execute on this opportunity. Trade is signed in your wallet; assistant cannot auto-execute.',
     summary: {
       type: data.type,
       route: `${data.source_dex} \u2192 ${data.target_dex}`,
       profit_usd: data.profit_usd,
       profit_percent: data.profit_percent,
+      source_network: data.source_network,
+      target_network: data.target_network,
     },
   };
+}
+
+async function getRecentTransactions(supabase: ReturnType<typeof createClient>, userId: string | undefined, limit = 5) {
+  let q = supabase
+    .from('transactions')
+    .select('id, hash, type, status, network, profit, created_at')
+    .order('created_at', { ascending: false })
+    .limit(Math.min(limit, 10));
+  if (userId) q = q.eq('user_id', userId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return { transactions: data ?? [] };
+}
+
+async function getUserSettings(supabase: ReturnType<typeof createClient>, userId: string | undefined) {
+  if (!userId) return { error: 'Not authenticated' };
+  const { data, error } = await supabase
+    .from('user_settings').select('*').eq('user_id', userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ?? { error: 'No settings yet' };
 }
 
 // ---------- Tool dispatch ----------
@@ -87,14 +121,14 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_balance',
-      description: 'Get native token balance for an address on a given network.',
+      description: 'Get native token balance for an address on a network.',
       parameters: {
         type: 'object',
         properties: {
-          address: { type: 'string', description: 'EVM address (0x...)' },
+          address: { type: 'string' },
           network: { type: 'string', enum: SUPPORTED_NETWORKS },
         },
-        required: ['address', 'network'],
+        required: ['network'],
       },
     },
   },
@@ -102,35 +136,124 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_opportunities',
-      description: 'List the highest-profit pending arbitrage opportunities.',
-      parameters: {
-        type: 'object',
-        properties: { limit: { type: 'number', description: '1-10', default: 5 } },
-      },
+      description: 'List highest-profit pending arbitrage opportunities. Returns ids the user can deep-link into the scanner.',
+      parameters: { type: 'object', properties: { limit: { type: 'number' } } },
     },
   },
   {
     type: 'function',
     function: {
       name: 'get_points',
-      description: 'Read tap-to-earn points for a wallet address.',
-      parameters: {
-        type: 'object',
-        properties: { address: { type: 'string' } },
-        required: ['address'],
-      },
+      description: 'Read tap-to-earn points for the connected wallet.',
+      parameters: { type: 'object', properties: { address: { type: 'string' } } },
     },
   },
   {
     type: 'function',
     function: {
       name: 'prepare_trade',
-      description: 'Look up an opportunity by id and return summary + execution instructions. Does not execute.',
+      description: 'Look up an opportunity and prepare it for execution. Emits a deep-link action to the scanner.',
       parameters: {
         type: 'object',
         properties: { opportunityId: { type: 'string' } },
         required: ['opportunityId'],
       },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_recent_transactions',
+      description: 'List the user\'s recent on-chain transactions.',
+      parameters: { type: 'object', properties: { limit: { type: 'number' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_user_settings',
+      description: 'Read the user\'s scanner config (min profit, gas cap, networks, auto-execute).',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  // ----- Action-emitting tools (return an action for the client to perform) -----
+  {
+    type: 'function',
+    function: {
+      name: 'open_panel',
+      description: 'Navigate the UI to a panel: dashboard | scanner | wallet | gasless | rebalance.',
+      parameters: {
+        type: 'object',
+        properties: { tab: { type: 'string', enum: VALID_TABS } },
+        required: ['tab'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'execute_opportunity',
+      description: 'Open the scanner with the opportunity preselected and prompt the user to execute it.',
+      parameters: {
+        type: 'object',
+        properties: { opportunityId: { type: 'string' } },
+        required: ['opportunityId'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'switch_network',
+      description: 'Ask the connected wallet to switch chain.',
+      parameters: {
+        type: 'object',
+        properties: { network: { type: 'string', enum: SUPPORTED_NETWORKS } },
+        required: ['network'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'start_scanner',
+      description: 'Start the arbitrage scanner.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_scanner',
+      description: 'Stop the arbitrage scanner.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'refresh_balances',
+      description: 'Refresh wallet token balances in the UI.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'connect_wallet',
+      description: 'Trigger wallet connect flow.',
+      parameters: {
+        type: 'object',
+        properties: { walletType: { type: 'string', enum: ['metamask', 'bitget', 'injected'] } },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'disconnect_wallet',
+      description: 'Disconnect the current wallet.',
+      parameters: { type: 'object', properties: {} },
     },
   },
 ];
@@ -139,18 +262,67 @@ async function runTool(
   name: string,
   args: Record<string, unknown>,
   supabase: ReturnType<typeof createClient>,
-  ctx: { walletAddress?: string },
+  ctx: { walletAddress?: string; network?: string; userId?: string },
+  actions: ClientAction[],
 ): Promise<unknown> {
   const addrArg = (args.address as string | undefined) ?? ctx.walletAddress;
   switch (name) {
     case 'get_balance':
-      return getBalance(addrArg as string, args.network as string);
-    case 'get_opportunities':
-      return getOpportunities(supabase, (args.limit as number) ?? 5);
+      return getBalance(addrArg as string, (args.network as string) ?? ctx.network ?? 'ethereum');
+    case 'get_opportunities': {
+      const r = await getOpportunities(supabase, (args.limit as number) ?? 5);
+      for (const o of r.opportunities.slice(0, 5)) {
+        actions.push({ type: 'select_opportunity', opportunityId: o.id, label: `View ${o.source_dex}\u2192${o.target_dex} ($${Number(o.profit_usd).toFixed(2)})` });
+      }
+      return r;
+    }
     case 'get_points':
       return getPoints(supabase, addrArg as string);
-    case 'prepare_trade':
-      return prepareTrade(supabase, args.opportunityId as string);
+    case 'prepare_trade': {
+      const r = await prepareTrade(supabase, args.opportunityId as string);
+      actions.push({ type: 'select_opportunity', opportunityId: r.opportunityId, label: 'Open in Scanner' });
+      actions.push({ type: 'execute_opportunity', opportunityId: r.opportunityId, label: 'Execute now' });
+      return r;
+    }
+    case 'get_recent_transactions':
+      return getRecentTransactions(supabase, ctx.userId, (args.limit as number) ?? 5);
+    case 'get_user_settings':
+      return getUserSettings(supabase, ctx.userId);
+    case 'open_panel': {
+      const tab = String(args.tab);
+      if (!VALID_TABS.includes(tab)) throw new Error('Invalid tab');
+      actions.push({ type: 'open_tab', tab, label: `Open ${tab}` });
+      return { ok: true, tab };
+    }
+    case 'execute_opportunity': {
+      const id = String(args.opportunityId);
+      actions.push({ type: 'select_opportunity', opportunityId: id, label: 'Open in Scanner' });
+      actions.push({ type: 'execute_opportunity', opportunityId: id, label: 'Execute now' });
+      return { ok: true, opportunityId: id, note: 'User must confirm in their wallet.' };
+    }
+    case 'switch_network': {
+      const net = String(args.network);
+      if (!SUPPORTED_NETWORKS.includes(net)) throw new Error('Unsupported network');
+      actions.push({ type: 'switch_network', network: net, label: `Switch to ${net}` });
+      return { ok: true, network: net };
+    }
+    case 'start_scanner':
+      actions.push({ type: 'start_scanner', label: 'Start scanner' });
+      return { ok: true };
+    case 'stop_scanner':
+      actions.push({ type: 'stop_scanner', label: 'Stop scanner' });
+      return { ok: true };
+    case 'refresh_balances':
+      actions.push({ type: 'refresh_balances', label: 'Refresh balances' });
+      return { ok: true };
+    case 'connect_wallet': {
+      const wt = (args.walletType as string) ?? 'injected';
+      actions.push({ type: 'connect_wallet', walletType: wt, label: `Connect ${wt}` });
+      return { ok: true };
+    }
+    case 'disconnect_wallet':
+      actions.push({ type: 'disconnect_wallet', label: 'Disconnect' });
+      return { ok: true };
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
@@ -191,19 +363,30 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    const systemPrompt = `You are FLASHARB Assistant, an AI co-pilot embedded in a multi-chain DeFi arbitrage terminal.
-Help the user inspect balances, scan opportunities, and prepare trades.
+    // Try to resolve user from JWT (optional)
+    let userId: string | undefined;
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+      const { data: u } = await supabase.auth.getUser(authHeader.slice(7));
+      userId = u.user?.id;
+    }
+
+    const systemPrompt = `You are FLASHARB Assistant, embedded in a multi-chain DeFi arbitrage terminal.
 Connected wallet: ${walletAddress ?? 'none'} | Active network: ${network ?? 'unknown'}.
-Use tools to fetch real on-chain data; never invent numbers. Be terse. Format responses in markdown.
-You CANNOT execute trades \u2014 only prepare them. Always tell the user to confirm in their wallet.`;
+You can drive the UI via action-tools: open_panel, execute_opportunity, select_opportunity (via prepare_trade), switch_network, start_scanner, stop_scanner, refresh_balances, connect_wallet, disconnect_wallet.
+Whenever the user asks to do something — execute a trade, switch networks, view a panel, scan, refresh — call the matching action tool. Each action becomes a one-tap button under your reply.
+For data questions use read tools (get_balance, get_opportunities, get_points, get_recent_transactions, get_user_settings).
+Always cite real on-chain numbers from tool output; never invent figures. Be terse, format in markdown.
+You CANNOT sign transactions yourself — actions open the relevant UI; the user confirms in their wallet.`;
 
     const convo: IncomingMessage[] = [
       { role: 'system', content: systemPrompt },
       ...messages,
     ];
 
-    // Tool-calling loop, max 4 iterations
-    for (let iter = 0; iter < 4; iter++) {
+    const actions: ClientAction[] = [];
+
+    for (let iter = 0; iter < 5; iter++) {
       const aiResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -239,7 +422,6 @@ You CANNOT execute trades \u2014 only prepare them. Always tell the user to conf
       const choice = json.choices?.[0]?.message;
       if (!choice) break;
 
-      // Tool calls?
       const toolCalls = choice.tool_calls as IncomingMessage['tool_calls'];
       if (toolCalls && toolCalls.length > 0) {
         convo.push({ role: 'assistant', content: choice.content ?? '', tool_calls: toolCalls });
@@ -247,7 +429,7 @@ You CANNOT execute trades \u2014 only prepare them. Always tell the user to conf
           let result: unknown;
           try {
             const args = JSON.parse(call.function.arguments || '{}');
-            result = await runTool(call.function.name, args, supabase, { walletAddress });
+            result = await runTool(call.function.name, args, supabase, { walletAddress, network, userId }, actions);
           } catch (e) {
             result = { error: e instanceof Error ? e.message : String(e) };
           }
@@ -260,14 +442,22 @@ You CANNOT execute trades \u2014 only prepare them. Always tell the user to conf
         continue;
       }
 
-      // Final answer
+      // De-dupe actions by stable key
+      const seen = new Set<string>();
+      const dedupedActions = actions.filter(a => {
+        const key = JSON.stringify(a);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
       return new Response(JSON.stringify({
         message: choice.content ?? '',
-        toolHistory: convo.filter(m => m.role === 'tool').map(m => ({ result: m.content })),
+        actions: dedupedActions,
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    return new Response(JSON.stringify({ message: 'Assistant exceeded tool-call limit. Try rephrasing.' }), {
+    return new Response(JSON.stringify({ message: 'Assistant exceeded tool-call limit. Try rephrasing.', actions }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

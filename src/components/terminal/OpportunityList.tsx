@@ -9,9 +9,10 @@ interface OpportunityListProps {
   opportunities: ArbitrageOpportunity[];
   onExecute: (id: string) => void;
   isScanning: boolean;
+  selectedOpportunityId?: string | null;
 }
 
-export function OpportunityList({ opportunities, onExecute, isScanning }: OpportunityListProps) {
+export function OpportunityList({ opportunities, onExecute, isScanning, selectedOpportunityId }: OpportunityListProps) {
   const [sortBy, setSortBy] = useState<'profit' | 'confidence' | 'time'>('profit');
   const [filterProfit, setFilterProfit] = useState<number | null>(null);
 
@@ -142,11 +143,15 @@ export function OpportunityList({ opportunities, onExecute, isScanning }: Opport
             sortedAndFilteredOpportunities.map((opp, index) => (
               <motion.div
                 key={opp.id}
+                id={`opp-${opp.id}`}
                 layout
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -20, scale: 0.95 }}
                 transition={{ delay: index * 0.05 }}
+                className={cn(
+                  selectedOpportunityId === opp.id && 'ring-2 ring-primary rounded-lg shadow-lg shadow-primary/30'
+                )}
               >
                 <OpportunityCard
                   opportunity={opp}

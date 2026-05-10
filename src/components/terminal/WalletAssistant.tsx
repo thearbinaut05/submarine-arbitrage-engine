@@ -1,28 +1,43 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, X, Loader2, Sparkles } from 'lucide-react';
+import { Bot, Send, X, Loader2, Sparkles, ArrowRight } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
+export type AssistantAction =
+  | { type: 'open_tab'; tab: string; label: string }
+  | { type: 'select_opportunity'; opportunityId: string; label: string }
+  | { type: 'execute_opportunity'; opportunityId: string; label: string }
+  | { type: 'switch_network'; network: string; label: string }
+  | { type: 'start_scanner'; label: string }
+  | { type: 'stop_scanner'; label: string }
+  | { type: 'refresh_balances'; label: string }
+  | { type: 'connect_wallet'; walletType?: string; label: string }
+  | { type: 'disconnect_wallet'; label: string };
+
 interface Message {
   role: 'user' | 'assistant';
   content: string;
+  actions?: AssistantAction[];
 }
 
 interface WalletAssistantProps {
   walletAddress?: string | null;
   network?: string | null;
+  onAction?: (action: AssistantAction) => void;
 }
 
 const QUICK_ACTIONS = [
   { label: '/balance', prompt: 'What is my native balance on the active network?' },
-  { label: '/scan', prompt: 'Show me the top 3 pending arbitrage opportunities.' },
+  { label: '/scan', prompt: 'Show me the top 3 pending arbitrage opportunities and let me jump to any of them.' },
+  { label: '/start', prompt: 'Start the arbitrage scanner.' },
+  { label: '/txs', prompt: 'Show my last 5 transactions.' },
   { label: '/points', prompt: 'How many tap-to-earn points do I have?' },
 ];
 
-export function WalletAssistant({ walletAddress, network }: WalletAssistantProps) {
+export function WalletAssistant({ walletAddress, network, onAction }: WalletAssistantProps) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -42,13 +57,16 @@ export function WalletAssistant({ walletAddress, network }: WalletAssistantProps
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('wallet-assistant', {
-        body: { messages: next, walletAddress, network },
+        body: {
+          messages: next.map(({ role, content }) => ({ role, content })),
+          walletAddress,
+          network,
+        },
       });
       if (error) throw error;
-      const reply = (data as { message?: string; error?: string })?.message
-        ?? (data as { error?: string })?.error
-        ?? 'No response.';
-      setMessages([...next, { role: 'assistant', content: reply }]);
+      const payload = data as { message?: string; error?: string; actions?: AssistantAction[] };
+      const reply = payload?.message ?? payload?.error ?? 'No response.';
+      setMessages([...next, { role: 'assistant', content: reply, actions: payload?.actions ?? [] }]);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Request failed';
       setMessages([...next, { role: 'assistant', content: `\u26a0\ufe0f ${msg}` }]);
@@ -59,7 +77,6 @@ export function WalletAssistant({ walletAddress, network }: WalletAssistantProps
 
   return (
     <>
-      {/* Floating launcher */}
       <motion.button
         onClick={() => setOpen((v) => !v)}
         whileHover={{ scale: 1.05 }}
@@ -83,7 +100,7 @@ export function WalletAssistant({ walletAddress, network }: WalletAssistantProps
             exit={{ opacity: 0, x: 50, y: 20 }}
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
             className={cn(
-              'fixed bottom-24 right-6 z-40 w-[380px] max-w-[calc(100vw-3rem)] h-[520px]',
+              'fixed bottom-24 right-6 z-40 w-[380px] max-w-[calc(100vw-3rem)] h-[560px]',
               'rounded-xl border border-primary/30 bg-card/95 backdrop-blur-xl',
               'shadow-2xl shadow-primary/20 flex flex-col overflow-hidden',
               'font-mono'
@@ -103,22 +120,41 @@ export function WalletAssistant({ walletAddress, network }: WalletAssistantProps
               {messages.length === 0 && (
                 <div className="text-center text-muted-foreground py-8 space-y-2">
                   <Bot className="h-8 w-8 mx-auto text-primary/60" />
-                  <p className="text-xs">Ask about balances, opportunities, or your points.</p>
+                  <p className="text-xs">Ask me to scan, execute, switch networks, or anything wallet-related.</p>
                 </div>
               )}
               {messages.map((m, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    'rounded-lg px-3 py-2 max-w-[90%]',
-                    m.role === 'user'
-                      ? 'ml-auto bg-primary/15 border border-primary/30 text-foreground'
-                      : 'mr-auto bg-muted/40 border border-border text-foreground'
-                  )}
-                >
-                  <div className="prose prose-sm prose-invert max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_code]:text-xs">
-                    <ReactMarkdown>{m.content}</ReactMarkdown>
+                <div key={i} className="space-y-1.5">
+                  <div
+                    className={cn(
+                      'rounded-lg px-3 py-2 max-w-[90%]',
+                      m.role === 'user'
+                        ? 'ml-auto bg-primary/15 border border-primary/30 text-foreground'
+                        : 'mr-auto bg-muted/40 border border-border text-foreground'
+                    )}
+                  >
+                    <div className="prose prose-sm prose-invert max-w-none break-words [&_p]:my-1 [&_pre]:my-1 [&_code]:text-xs">
+                      <ReactMarkdown>{m.content}</ReactMarkdown>
+                    </div>
                   </div>
+                  {m.role === 'assistant' && m.actions && m.actions.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mr-auto max-w-[90%]">
+                      {m.actions.map((a, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => onAction?.(a)}
+                          className={cn(
+                            'inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md',
+                            'border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20',
+                            'transition-colors font-sans'
+                          )}
+                        >
+                          <ArrowRight className="h-3 w-3" />
+                          {a.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
               {loading && (
