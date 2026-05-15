@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, X, Loader2, Sparkles, ArrowRight } from 'lucide-react';
+import { Bot, Send, X, Loader2, Sparkles, ArrowRight, Wallet, Search, Play, History, Coins } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
