@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bot, Send, X, Loader2, Sparkles, ArrowRight } from 'lucide-react';
+import { Bot, Send, X, Loader2, Sparkles, ArrowRight, Wallet, Search, Play, History, Coins } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -30,11 +30,17 @@ interface WalletAssistantProps {
 }
 
 const QUICK_ACTIONS = [
-  { label: '/balance', prompt: 'What is my native balance on the active network?' },
-  { label: '/scan', prompt: 'Show me the top 3 pending arbitrage opportunities and let me jump to any of them.' },
-  { label: '/start', prompt: 'Start the arbitrage scanner.' },
-  { label: '/txs', prompt: 'Show my last 5 transactions.' },
-  { label: '/points', prompt: 'How many tap-to-earn points do I have?' },
+  { label: 'Balance', icon: Wallet, prompt: 'What is my native balance on the active network?' },
+  { label: 'Scan', icon: Search, prompt: 'Show me the top 3 pending arbitrage opportunities and let me jump to any of them.' },
+  { label: 'Start', icon: Play, prompt: 'Start the arbitrage scanner.' },
+  { label: 'History', icon: History, prompt: 'Show my last 5 transactions.' },
+  { label: 'Points', icon: Coins, prompt: 'How many tap-to-earn points do I have?' },
+];
+
+const STARTER_PROMPTS = [
+  'What can you do?',
+  'Find me the best arbitrage right now',
+  'Switch to Arbitrum and start scanning',
 ];
 
 export function WalletAssistant({ walletAddress, network, onAction }: WalletAssistantProps) {
@@ -100,10 +106,11 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
             exit={{ opacity: 0, x: 50, y: 20 }}
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
             className={cn(
-              'fixed bottom-24 right-6 z-40 w-[380px] max-w-[calc(100vw-3rem)] h-[560px]',
+              'fixed z-40 flex flex-col overflow-hidden font-mono',
+              'inset-x-3 bottom-24 sm:inset-x-auto sm:right-6 sm:w-[380px]',
+              'h-[min(560px,calc(100vh-7rem))] max-w-[calc(100vw-1.5rem)]',
               'rounded-xl border border-primary/30 bg-card/95 backdrop-blur-xl',
-              'shadow-2xl shadow-primary/20 flex flex-col overflow-hidden',
-              'font-mono'
+              'shadow-2xl shadow-primary/20'
             )}
           >
             <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-primary/10 to-accent/10">
@@ -118,9 +125,21 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
               {messages.length === 0 && (
-                <div className="text-center text-muted-foreground py-8 space-y-2">
+                <div className="text-center text-muted-foreground py-6 space-y-3">
                   <Bot className="h-8 w-8 mx-auto text-primary/60" />
-                  <p className="text-xs">Ask me to scan, execute, switch networks, or anything wallet-related.</p>
+                  <p className="text-xs px-2">Hi! I can check balances, scan for arbitrage, switch networks, and execute trades for you.</p>
+                  <div className="flex flex-col gap-1.5 px-2 pt-1">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Try asking:</p>
+                    {STARTER_PROMPTS.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => send(p)}
+                        className="text-xs text-left px-3 py-2 rounded-md border border-border bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-colors"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {messages.map((m, i) => (
@@ -164,17 +183,21 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
               )}
             </div>
 
-            <div className="px-3 pt-2 flex flex-wrap gap-1">
-              {QUICK_ACTIONS.map((qa) => (
-                <button
-                  key={qa.label}
-                  onClick={() => send(qa.prompt)}
-                  disabled={loading}
-                  className="text-[10px] px-2 py-1 rounded border border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                >
-                  {qa.label}
-                </button>
-              ))}
+            <div className="px-3 pt-2 flex flex-wrap gap-1.5">
+              {QUICK_ACTIONS.map((qa) => {
+                const Icon = qa.icon;
+                return (
+                  <button
+                    key={qa.label}
+                    onClick={() => send(qa.prompt)}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                  >
+                    <Icon className="h-3 w-3" />
+                    {qa.label}
+                  </button>
+                );
+              })}
             </div>
 
             <form
@@ -184,7 +207,7 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the terminal…"
+                placeholder="Ask anything…"
                 disabled={loading}
                 className="flex-1 bg-muted/30 border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary/60"
               />
