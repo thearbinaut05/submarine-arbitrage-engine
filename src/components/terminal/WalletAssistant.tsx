@@ -106,10 +106,11 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
             exit={{ opacity: 0, x: 50, y: 20 }}
             transition={{ type: 'spring', stiffness: 280, damping: 28 }}
             className={cn(
-              'fixed bottom-24 right-6 z-40 w-[380px] max-w-[calc(100vw-3rem)] h-[560px]',
+              'fixed z-40 flex flex-col overflow-hidden font-mono',
+              'inset-x-3 bottom-24 sm:inset-x-auto sm:right-6 sm:w-[380px]',
+              'h-[min(560px,calc(100vh-7rem))] max-w-[calc(100vw-1.5rem)]',
               'rounded-xl border border-primary/30 bg-card/95 backdrop-blur-xl',
-              'shadow-2xl shadow-primary/20 flex flex-col overflow-hidden',
-              'font-mono'
+              'shadow-2xl shadow-primary/20'
             )}
           >
             <header className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-primary/10 to-accent/10">
@@ -124,9 +125,21 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
 
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
               {messages.length === 0 && (
-                <div className="text-center text-muted-foreground py-8 space-y-2">
+                <div className="text-center text-muted-foreground py-6 space-y-3">
                   <Bot className="h-8 w-8 mx-auto text-primary/60" />
-                  <p className="text-xs">Ask me to scan, execute, switch networks, or anything wallet-related.</p>
+                  <p className="text-xs px-2">Hi! I can check balances, scan for arbitrage, switch networks, and execute trades for you.</p>
+                  <div className="flex flex-col gap-1.5 px-2 pt-1">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70">Try asking:</p>
+                    {STARTER_PROMPTS.map((p) => (
+                      <button
+                        key={p}
+                        onClick={() => send(p)}
+                        className="text-xs text-left px-3 py-2 rounded-md border border-border bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-colors"
+                      >
+                        {p}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
               {messages.map((m, i) => (
