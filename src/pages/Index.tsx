@@ -209,8 +209,18 @@ const Index = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="h-full max-w-7xl mx-auto"
+            className="h-full max-w-7xl mx-auto space-y-4"
           >
+            {/* Auto network detection prompt */}
+            {wallet.isConnected && requiredNetwork && (
+              <NetworkMismatchBanner
+                walletNetwork={wallet.network}
+                requiredNetwork={requiredNetwork}
+                reason={`Selected opportunity runs on ${requiredNetwork}.`}
+                onSwitch={switchNetwork}
+                onDismiss={() => setSelectedOpportunityId(null)}
+              />
+            )}
             {activeTab === 'dashboard' && (
               <div className="space-y-6">
                 {/* Dashboard Stats */}
