@@ -21,6 +21,7 @@ import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
 import { WalletAssistant, type AssistantAction } from '@/components/terminal/WalletAssistant';
+import { NetworkMismatchBanner } from '@/components/terminal/NetworkMismatchBanner';
 import { toast } from '@/hooks/use-toast';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { useTapToEarn } from '@/hooks/useTapToEarn';
