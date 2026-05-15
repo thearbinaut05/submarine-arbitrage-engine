@@ -183,17 +183,21 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
               )}
             </div>
 
-            <div className="px-3 pt-2 flex flex-wrap gap-1">
-              {QUICK_ACTIONS.map((qa) => (
-                <button
-                  key={qa.label}
-                  onClick={() => send(qa.prompt)}
-                  disabled={loading}
-                  className="text-[10px] px-2 py-1 rounded border border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
-                >
-                  {qa.label}
-                </button>
-              ))}
+            <div className="px-3 pt-2 flex flex-wrap gap-1.5">
+              {QUICK_ACTIONS.map((qa) => {
+                const Icon = qa.icon;
+                return (
+                  <button
+                    key={qa.label}
+                    onClick={() => send(qa.prompt)}
+                    disabled={loading}
+                    className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded-md border border-primary/30 text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+                  >
+                    <Icon className="h-3 w-3" />
+                    {qa.label}
+                  </button>
+                );
+              })}
             </div>
 
             <form
@@ -203,7 +207,7 @@ export function WalletAssistant({ walletAddress, network, onAction }: WalletAssi
               <input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the terminal…"
+                placeholder="Ask anything…"
                 disabled={loading}
                 className="flex-1 bg-muted/30 border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-primary/60"
               />
