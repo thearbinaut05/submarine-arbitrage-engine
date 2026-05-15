@@ -30,11 +30,17 @@ interface WalletAssistantProps {
 }
 
 const QUICK_ACTIONS = [
-  { label: '/balance', prompt: 'What is my native balance on the active network?' },
-  { label: '/scan', prompt: 'Show me the top 3 pending arbitrage opportunities and let me jump to any of them.' },
-  { label: '/start', prompt: 'Start the arbitrage scanner.' },
-  { label: '/txs', prompt: 'Show my last 5 transactions.' },
-  { label: '/points', prompt: 'How many tap-to-earn points do I have?' },
+  { label: 'Balance', icon: Wallet, prompt: 'What is my native balance on the active network?' },
+  { label: 'Scan', icon: Search, prompt: 'Show me the top 3 pending arbitrage opportunities and let me jump to any of them.' },
+  { label: 'Start', icon: Play, prompt: 'Start the arbitrage scanner.' },
+  { label: 'History', icon: History, prompt: 'Show my last 5 transactions.' },
+  { label: 'Points', icon: Coins, prompt: 'How many tap-to-earn points do I have?' },
+];
+
+const STARTER_PROMPTS = [
+  'What can you do?',
+  'Find me the best arbitrage right now',
+  'Switch to Arbitrum and start scanning',
 ];
 
 export function WalletAssistant({ walletAddress, network, onAction }: WalletAssistantProps) {
