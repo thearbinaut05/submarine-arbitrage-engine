@@ -424,8 +424,18 @@ export function useWallet() {
       }
     };
 
-    const handleChainChanged = () => {
-      window.location.reload();
+    const handleChainChanged = (chainIdHex: unknown) => {
+      const chainId = typeof chainIdHex === 'string' ? parseInt(chainIdHex, 16) : Number(chainIdHex);
+      const detected = Object.values(NETWORKS).find(n => n.chainId === chainId);
+      if (detected) {
+        rpcProviderRef.current = new ethers.JsonRpcProvider(detected.rpcUrl);
+        setWallet(prev => ({ ...prev, network: detected.id }));
+        // refresh balances on next tick once state settles
+        setTimeout(() => refreshBalances(), 500);
+      } else {
+        console.warn(`Switched to unsupported chain: ${chainId}`);
+        setWallet(prev => ({ ...prev, network: null }));
+      }
     };
 
     injectedProvider.on('accountsChanged', handleAccountsChanged);

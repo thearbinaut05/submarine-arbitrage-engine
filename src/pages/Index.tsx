@@ -21,6 +21,7 @@ import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
 import { WalletAssistant, type AssistantAction } from '@/components/terminal/WalletAssistant';
+import { NetworkMismatchBanner } from '@/components/terminal/NetworkMismatchBanner';
 import { toast } from '@/hooks/use-toast';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { useTapToEarn } from '@/hooks/useTapToEarn';
@@ -82,18 +83,41 @@ const Index = () => {
   // Use only real opportunities
   const combinedOpportunities = realOpportunities;
 
-  // Execute opportunity - real execution via edge function + Gelato
+  // Currently-selected opportunity (drives network mismatch banner)
+  const selectedOpportunity = selectedOpportunityId
+    ? realOpportunities.find(op => op.id === selectedOpportunityId) ?? null
+    : null;
+  const requiredNetwork: Network | null = selectedOpportunity?.sourceNetwork ?? null;
+
+  // Execute opportunity - auto-prompts to switch network if wallet is on the wrong chain
   const handleExecute = useCallback(async (id: string) => {
     const opportunity = realOpportunities.find(op => op.id === id);
-    
-    if (opportunity) {
+    if (!opportunity) return;
+
+    if (wallet.isConnected && wallet.network !== opportunity.sourceNetwork) {
+      toast({
+        title: 'Switching network',
+        description: `This trade runs on ${opportunity.sourceNetwork}. Approving switch in your wallet…`,
+      });
       try {
-        await realExecuteOpportunity(opportunity);
-      } catch (error) {
-        console.error('Execution failed:', error);
+        await switchNetwork(opportunity.sourceNetwork);
+      } catch (err) {
+        toast({
+          title: 'Network switch required',
+          description: 'Please approve the network switch in your wallet to execute this trade.',
+          variant: 'destructive',
+        });
+        setSelectedOpportunityId(id);
+        return;
       }
     }
-  }, [realOpportunities, realExecuteOpportunity]);
+
+    try {
+      await realExecuteOpportunity(opportunity);
+    } catch (error) {
+      console.error('Execution failed:', error);
+    }
+  }, [realOpportunities, realExecuteOpportunity, wallet.isConnected, wallet.network, switchNetwork]);
 
   // Handle wallet connection with error handling
   const handleConnect = useCallback(async (walletType: 'metamask' | 'bitget' | 'injected' = 'injected') => {
@@ -185,8 +209,18 @@ const Index = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
-            className="h-full max-w-7xl mx-auto"
+            className="h-full max-w-7xl mx-auto space-y-4"
           >
+            {/* Auto network detection prompt */}
+            {wallet.isConnected && requiredNetwork && (
+              <NetworkMismatchBanner
+                walletNetwork={wallet.network}
+                requiredNetwork={requiredNetwork}
+                reason={`Selected opportunity runs on ${requiredNetwork}.`}
+                onSwitch={switchNetwork}
+                onDismiss={() => setSelectedOpportunityId(null)}
+              />
+            )}
             {activeTab === 'dashboard' && (
               <div className="space-y-6">
                 {/* Dashboard Stats */}
