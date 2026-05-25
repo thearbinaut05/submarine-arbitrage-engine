@@ -810,6 +810,8 @@ serve(async (req) => {
       network,
       tokenIn,
       tokenOut,
+      tokenInAddress,
+      tokenOutAddress,
       amountIn: rawAmountIn,
       sourceDex,
       targetDex,
@@ -907,14 +909,15 @@ serve(async (req) => {
       });
     }
 
-    // Get token addresses
-    const tokenInData = tokens[tokenIn];
-    const tokenOutData = tokens[tokenOut];
+    // Get token addresses. Scanner payloads can send symbols; manual/API callers can send addresses.
+    const tokenInData = resolveTokenReference(tokens, tokenIn, tokenInAddress);
+    const tokenOutData = resolveTokenReference(tokens, tokenOut, tokenOutAddress);
 
     if (!tokenInData || !tokenOutData) {
       return new Response(JSON.stringify({
         success: false,
         error: `Token not supported on ${network}`,
+        received: { tokenIn, tokenOut, tokenInAddress, tokenOutAddress },
         availableTokens: Object.keys(tokens),
       }), {
         status: 400,
