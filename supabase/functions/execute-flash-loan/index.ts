@@ -65,6 +65,8 @@ interface FlashLoanRequest {
   network: string;
   tokenIn: string;
   tokenOut: string;
+  tokenInAddress?: string;
+  tokenOutAddress?: string;
   amountIn: string;
   sourceDex: string;
   targetDex: string;
@@ -76,12 +78,41 @@ interface FlashLoanRequest {
   opportunityId?: string;
 }
 
+interface ResolvedToken {
+  symbol: string;
+  address: string;
+  decimals: number;
+}
+
 function isValidAddress(value: string | undefined | null): value is string {
   return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
 function normalizeAddress(address: string): string {
   return `0x${address.slice(2).toLowerCase()}`;
+}
+
+function resolveTokenReference(
+  networkTokens: Record<string, { address: string; decimals: number; symbol: string }>,
+  tokenRef: string,
+  explicitAddress?: string,
+): ResolvedToken | null {
+  const directSymbol = networkTokens[tokenRef];
+  if (directSymbol) {
+    return { symbol: directSymbol.symbol || tokenRef, address: directSymbol.address, decimals: directSymbol.decimals };
+  }
+
+  const addressCandidate = explicitAddress || tokenRef;
+  if (isValidAddress(addressCandidate)) {
+    const normalized = normalizeAddress(addressCandidate);
+    const entry = Object.entries(networkTokens).find(([, token]) => normalizeAddress(token.address) === normalized);
+    if (entry) {
+      const [fallbackSymbol, token] = entry;
+      return { symbol: token.symbol || fallbackSymbol, address: token.address, decimals: token.decimals };
+    }
+  }
+
+  return null;
 }
 
 interface SwapQuote {
