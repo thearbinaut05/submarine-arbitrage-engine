@@ -65,6 +65,8 @@ interface FlashLoanRequest {
   network: string;
   tokenIn: string;
   tokenOut: string;
+  tokenInAddress?: string;
+  tokenOutAddress?: string;
   amountIn: string;
   sourceDex: string;
   targetDex: string;
@@ -76,12 +78,41 @@ interface FlashLoanRequest {
   opportunityId?: string;
 }
 
+interface ResolvedToken {
+  symbol: string;
+  address: string;
+  decimals: number;
+}
+
 function isValidAddress(value: string | undefined | null): value is string {
   return typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value);
 }
 
 function normalizeAddress(address: string): string {
   return `0x${address.slice(2).toLowerCase()}`;
+}
+
+function resolveTokenReference(
+  networkTokens: Record<string, { address: string; decimals: number; symbol: string }>,
+  tokenRef: string,
+  explicitAddress?: string,
+): ResolvedToken | null {
+  const directSymbol = networkTokens[tokenRef];
+  if (directSymbol) {
+    return { symbol: directSymbol.symbol || tokenRef, address: directSymbol.address, decimals: directSymbol.decimals };
+  }
+
+  const addressCandidate = explicitAddress || tokenRef;
+  if (isValidAddress(addressCandidate)) {
+    const normalized = normalizeAddress(addressCandidate);
+    const entry = Object.entries(networkTokens).find(([, token]) => normalizeAddress(token.address) === normalized);
+    if (entry) {
+      const [fallbackSymbol, token] = entry;
+      return { symbol: token.symbol || fallbackSymbol, address: token.address, decimals: token.decimals };
+    }
+  }
+
+  return null;
 }
 
 interface SwapQuote {
@@ -490,6 +521,10 @@ function getRouterForNetwork(network: string, dexName: string): { router: string
 
   // Prefer the requested DEX
   const normalizedDex = dexName.toLowerCase().replace(/[\s-]/g, '_');
+  const directRouter = networkRouters[normalizedDex];
+  if (directRouter) {
+    return { router: directRouter, isV3: normalizedDex.includes('v3') || normalizedDex.includes('uniswap_v3') };
+  }
   
   if (normalizedDex.includes('uniswap') || normalizedDex.includes('v3')) {
     if (networkRouters.uniswap_v3) {
@@ -779,6 +814,8 @@ serve(async (req) => {
       network,
       tokenIn,
       tokenOut,
+      tokenInAddress,
+      tokenOutAddress,
       amountIn: rawAmountIn,
       sourceDex,
       targetDex,
@@ -876,14 +913,15 @@ serve(async (req) => {
       });
     }
 
-    // Get token addresses
-    const tokenInData = tokens[tokenIn];
-    const tokenOutData = tokens[tokenOut];
+    // Get token addresses. Scanner payloads can send symbols; manual/API callers can send addresses.
+    const tokenInData = resolveTokenReference(tokens, tokenIn, tokenInAddress);
+    const tokenOutData = resolveTokenReference(tokens, tokenOut, tokenOutAddress);
 
     if (!tokenInData || !tokenOutData) {
       return new Response(JSON.stringify({
         success: false,
         error: `Token not supported on ${network}`,
+        received: { tokenIn, tokenOut, tokenInAddress, tokenOutAddress },
         availableTokens: Object.keys(tokens),
       }), {
         status: 400,

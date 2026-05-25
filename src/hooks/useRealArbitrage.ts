@@ -91,6 +91,7 @@ export function useRealArbitrage(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingTxsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const scanInFlightRef = useRef(false);
   // Store full backend opportunity data including amountIn for execution
   const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
   
@@ -132,10 +133,8 @@ export function useRealArbitrage(
       return [];
     }
 
-    // Cancel any previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (scanInFlightRef.current) return [];
+    scanInFlightRef.current = true;
     abortControllerRef.current = new AbortController();
 
     try {
@@ -195,10 +194,16 @@ export function useRealArbitrage(
         scanError: error instanceof Error ? error.message : 'Unknown error',
       }));
       return [];
+    } finally {
+      scanInFlightRef.current = false;
     }
   }, [convertToOpportunity]);
 
   const startScanning = useCallback(async () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
     // Scan one network at a time to stay within edge function CPU limits
@@ -263,6 +268,7 @@ export function useRealArbitrage(
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    scanInFlightRef.current = false;
     setState(prev => ({ ...prev, isScanning: false }));
   }, []);
 
@@ -501,6 +507,8 @@ export function useRealArbitrage(
           network: targetNetwork,
           tokenIn: opportunity.tokenIn,
           tokenOut: opportunity.tokenOut,
+          tokenInAddress: backendOpp?.tokenInAddress,
+          tokenOutAddress: backendOpp?.tokenOutAddress,
           amountIn: amountIn,
           sourceDex: opportunity.sourceDex,
           targetDex: opportunity.targetDex,
@@ -519,12 +527,17 @@ export function useRealArbitrage(
       }
 
       const result = await response.json();
+      const submittedHash = result.taskId || result.txHash;
+
+      if (!submittedHash) {
+        throw new Error(result.error || 'Execution did not return a transaction hash');
+      }
 
       // Update executing opportunity with revealed phase
       const revealedOpp: ArbitrageOpportunity = {
         ...executingOpp,
         submarinePhase: 'revealed',
-        txHash: result.taskId,
+        txHash: submittedHash,
       };
       executingOpportunitiesRef.current.set(opportunity.id, revealedOpp);
 
@@ -532,20 +545,18 @@ export function useRealArbitrage(
         ...prev,
         opportunities: prev.opportunities.map(op => 
           op.id === opportunity.id 
-            ? { ...op, submarinePhase: 'revealed' as const, txHash: result.taskId } 
+            ? { ...op, submarinePhase: 'revealed' as const, txHash: submittedHash } 
             : op
         ),
       }));
 
-      if (result.taskId) {
-        pollForTransaction(opportunity.id, targetNetwork, result.taskId);
-      }
+      pollForTransaction(opportunity.id, targetNetwork, submittedHash);
 
       return { 
-        hash: result.taskId, 
+        hash: submittedHash, 
         simulated: false, 
         isSubmarine: true, 
-        explorerUrl: result.taskId ? getExplorerUrl(targetNetwork, result.taskId) : undefined 
+        explorerUrl: getExplorerUrl(targetNetwork, submittedHash) 
       };
     } catch (error) {
       console.error('Execution failed:', error);
@@ -578,9 +589,16 @@ export function useRealArbitrage(
   useEffect(() => {
     if (!autoExecute || !walletAddress) return;
 
-    // Auto-execute one top pending high-confidence opportunity per scan cycle
+    // Auto-execute one top pending high-confidence opportunity per scan cycle.
+    // Only fire when the wallet is already on the opportunity chain and full backend data exists.
     const topOpp = state.opportunities
-      .filter(o => o.status === 'pending' && o.netProfit > 0 && o.confidence > 70)
+      .filter(o =>
+        o.status === 'pending' &&
+        o.netProfit > 0 &&
+        o.confidence > 70 &&
+        o.sourceNetwork === network &&
+        backendOpportunitiesRef.current.has(o.id)
+      )
       .sort((a, b) => b.netProfit - a.netProfit)[0];
 
     if (!topOpp) return;
@@ -593,7 +611,7 @@ export function useRealArbitrage(
       // allow retry for the same opp if desired by removing from set
       autoExecutedIdsRef.current.delete(topOpp.id);
     });
-  }, [autoExecute, walletAddress, state.opportunities, executeOpportunity]);
+  }, [autoExecute, walletAddress, network, state.opportunities, executeOpportunity]);
 
   // Get all completed opportunities (for history display)
   const getCompletedOpportunities = useCallback((): ArbitrageOpportunity[] => {
@@ -612,6 +630,7 @@ export function useRealArbitrage(
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
+      scanInFlightRef.current = false;
       pendingTxsRef.current.forEach((timer) => clearInterval(timer));
       pendingTxsRef.current.clear();
     };
