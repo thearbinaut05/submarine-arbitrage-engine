@@ -521,6 +521,10 @@ function getRouterForNetwork(network: string, dexName: string): { router: string
 
   // Prefer the requested DEX
   const normalizedDex = dexName.toLowerCase().replace(/[\s-]/g, '_');
+  const directRouter = networkRouters[normalizedDex];
+  if (directRouter) {
+    return { router: directRouter, isV3: normalizedDex.includes('v3') || normalizedDex.includes('uniswap_v3') };
+  }
   
   if (normalizedDex.includes('uniswap') || normalizedDex.includes('v3')) {
     if (networkRouters.uniswap_v3) {
