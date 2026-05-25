@@ -501,6 +501,8 @@ export function useRealArbitrage(
           network: targetNetwork,
           tokenIn: opportunity.tokenIn,
           tokenOut: opportunity.tokenOut,
+          tokenInAddress: backendOpp?.tokenInAddress,
+          tokenOutAddress: backendOpp?.tokenOutAddress,
           amountIn: amountIn,
           sourceDex: opportunity.sourceDex,
           targetDex: opportunity.targetDex,
@@ -519,12 +521,17 @@ export function useRealArbitrage(
       }
 
       const result = await response.json();
+      const submittedHash = result.taskId || result.txHash;
+
+      if (!submittedHash) {
+        throw new Error(result.error || 'Execution did not return a transaction hash');
+      }
 
       // Update executing opportunity with revealed phase
       const revealedOpp: ArbitrageOpportunity = {
         ...executingOpp,
         submarinePhase: 'revealed',
-        txHash: result.taskId,
+        txHash: submittedHash,
       };
       executingOpportunitiesRef.current.set(opportunity.id, revealedOpp);
 
@@ -532,20 +539,18 @@ export function useRealArbitrage(
         ...prev,
         opportunities: prev.opportunities.map(op => 
           op.id === opportunity.id 
-            ? { ...op, submarinePhase: 'revealed' as const, txHash: result.taskId } 
+            ? { ...op, submarinePhase: 'revealed' as const, txHash: submittedHash } 
             : op
         ),
       }));
 
-      if (result.taskId) {
-        pollForTransaction(opportunity.id, targetNetwork, result.taskId);
-      }
+      pollForTransaction(opportunity.id, targetNetwork, submittedHash);
 
       return { 
-        hash: result.taskId, 
+        hash: submittedHash, 
         simulated: false, 
         isSubmarine: true, 
-        explorerUrl: result.taskId ? getExplorerUrl(targetNetwork, result.taskId) : undefined 
+        explorerUrl: getExplorerUrl(targetNetwork, submittedHash) 
       };
     } catch (error) {
       console.error('Execution failed:', error);
@@ -578,9 +583,16 @@ export function useRealArbitrage(
   useEffect(() => {
     if (!autoExecute || !walletAddress) return;
 
-    // Auto-execute one top pending high-confidence opportunity per scan cycle
+    // Auto-execute one top pending high-confidence opportunity per scan cycle.
+    // Only fire when the wallet is already on the opportunity chain and full backend data exists.
     const topOpp = state.opportunities
-      .filter(o => o.status === 'pending' && o.netProfit > 0 && o.confidence > 70)
+      .filter(o =>
+        o.status === 'pending' &&
+        o.netProfit > 0 &&
+        o.confidence > 70 &&
+        o.sourceNetwork === network &&
+        backendOpportunitiesRef.current.has(o.id)
+      )
       .sort((a, b) => b.netProfit - a.netProfit)[0];
 
     if (!topOpp) return;
@@ -593,7 +605,7 @@ export function useRealArbitrage(
       // allow retry for the same opp if desired by removing from set
       autoExecutedIdsRef.current.delete(topOpp.id);
     });
-  }, [autoExecute, walletAddress, state.opportunities, executeOpportunity]);
+  }, [autoExecute, walletAddress, network, state.opportunities, executeOpportunity]);
 
   // Get all completed opportunities (for history display)
   const getCompletedOpportunities = useCallback((): ArbitrageOpportunity[] => {
