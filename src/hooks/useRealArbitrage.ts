@@ -91,6 +91,7 @@ export function useRealArbitrage(
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingTxsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const abortControllerRef = useRef<AbortController | null>(null);
+  const scanInFlightRef = useRef(false);
   // Store full backend opportunity data including amountIn for execution
   const backendOpportunitiesRef = useRef<Map<string, BackendOpportunity>>(new Map());
   
@@ -132,10 +133,8 @@ export function useRealArbitrage(
       return [];
     }
 
-    // Cancel any previous request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    if (scanInFlightRef.current) return [];
+    scanInFlightRef.current = true;
     abortControllerRef.current = new AbortController();
 
     try {
@@ -195,10 +194,16 @@ export function useRealArbitrage(
         scanError: error instanceof Error ? error.message : 'Unknown error',
       }));
       return [];
+    } finally {
+      scanInFlightRef.current = false;
     }
   }, [convertToOpportunity]);
 
   const startScanning = useCallback(async () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
     setState(prev => ({ ...prev, isScanning: true, scanError: null }));
 
     // Scan one network at a time to stay within edge function CPU limits
