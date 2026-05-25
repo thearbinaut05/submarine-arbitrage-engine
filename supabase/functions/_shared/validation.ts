@@ -4,18 +4,20 @@ export const ethAddress = z.string().regex(/^0x[a-fA-F0-9]{40}$/, 'Invalid addre
 export const hexData = z.string().regex(/^0x[a-fA-F0-9]*$/, 'Invalid hex data');
 export const numericString = z.string().regex(/^\d+$/, 'Must be a numeric string');
 export const networkEnum = z.enum(['ethereum', 'arbitrum', 'polygon', 'bsc', 'optimism', 'base', 'avalanche']);
+export const tokenRef = z.string().trim().min(2).max(32).regex(/^(0x[a-fA-F0-9]{40}|[A-Za-z0-9_.-]+)$/, 'Invalid token');
+export const opportunityRef = z.string().trim().min(1).max(160);
 
 export const FlashLoanSchema = z.object({
   network: networkEnum,
-  tokenIn: ethAddress,
-  tokenOut: ethAddress,
+  tokenIn: tokenRef,
+  tokenOut: tokenRef,
   amountIn: z.union([numericString, z.number().positive()]).transform((v) => String(v)),
   sourceDex: z.string().min(1).max(100),
   targetDex: z.string().min(1).max(100),
   slippageTolerance: z.number().min(0).max(50).optional(),
   walletAddress: ethAddress.optional(),
   useGelato: z.boolean().optional(),
-  opportunityId: z.string().uuid().optional(),
+  opportunityId: opportunityRef.optional(),
 }).passthrough();
 
 export const GaslessRelaySchema = z.object({
@@ -28,7 +30,7 @@ export const GaslessRelaySchema = z.object({
   walletAddress: ethAddress,
   walletType: z.enum(['metamask', 'bitget', 'injected', 'embedded']).optional(),
   isSubmarine: z.boolean().optional(),
-  opportunityId: z.string().uuid().optional(),
+  opportunityId: opportunityRef.optional(),
 }).passthrough();
 
 export const RebalanceSchema = z.object({
@@ -57,7 +59,12 @@ export function validateOrError<T>(schema: z.ZodType<T>, body: unknown, corsHead
     return {
       ok: false as const,
       response: new Response(
-        JSON.stringify({ success: false, error: 'Invalid request parameters', code: 'VALIDATION_ERROR' }),
+        JSON.stringify({
+          success: false,
+          error: 'Invalid request parameters',
+          code: 'VALIDATION_ERROR',
+          details: result.error.flatten().fieldErrors,
+        }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       ),
     };
