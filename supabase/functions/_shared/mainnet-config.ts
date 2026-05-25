@@ -611,8 +611,8 @@ export const SCANNER_CONFIG = {
   minProfitUsd: 1,
   minNetProfitUsd: 0.5,
   
-  // AUTO-EXECUTION THRESHOLDS - LOWERED for more trades
-  autoExecuteEnabled: true,
+  // AUTO-EXECUTION THRESHOLDS - client-controlled only; scanner should never fire live txs by itself
+  autoExecuteEnabled: false,
   autoExecuteMinProfitPercent: 0.5, // Much lowered for more trades
   autoExecuteMinConfidence: 50, // Lowered
   autoExecuteMinNetProfitUsd: 5, // Much lowered for more trades
