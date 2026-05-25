@@ -268,6 +268,7 @@ export function useRealArbitrage(
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    scanInFlightRef.current = false;
     setState(prev => ({ ...prev, isScanning: false }));
   }, []);
 
@@ -629,6 +630,7 @@ export function useRealArbitrage(
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
+      scanInFlightRef.current = false;
       pendingTxsRef.current.forEach((timer) => clearInterval(timer));
       pendingTxsRef.current.clear();
     };
