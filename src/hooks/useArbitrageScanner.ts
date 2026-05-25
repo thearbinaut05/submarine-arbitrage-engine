@@ -509,9 +509,12 @@ export function useArbitrageScanner() {
         network: executingOpp.sourceNetwork,
         tokenIn: executingOpp.tokenIn,
         tokenOut: executingOpp.tokenOut,
+        tokenInAddress: backendOpp.tokenInAddress,
+        tokenOutAddress: backendOpp.tokenOutAddress,
         amountIn: backendOpp.amountIn,
         sourceDex: executingOpp.sourceDex,
         targetDex: executingOpp.targetDex,
+        walletAddress: backendOpp.executorAddress,
         profitRecipient: backendOpp.executorAddress,
         minProfit: executingOpp.netProfit * 0.8, // 80% of estimated profit as minimum
         slippageTolerance: 0.5, // 0.5% slippage tolerance
