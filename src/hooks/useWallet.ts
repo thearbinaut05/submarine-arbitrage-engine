@@ -500,7 +500,6 @@ export function useWallet() {
     browserProvider: providerRef.current,
   };
 }
-}
 
 interface EthereumProvider {
   isConnected?: boolean;
