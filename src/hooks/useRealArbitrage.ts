@@ -128,54 +128,41 @@ export function useRealArbitrage(
 
   // Call the backend scanner edge function
   const scanNetworks = useCallback(async (networksToScan: string[]): Promise<ArbitrageOpportunity[]> => {
-    if (!SUPABASE_URL) {
-      console.error('SUPABASE_URL not configured');
-      return [];
-    }
-
     if (scanInFlightRef.current) return [];
     scanInFlightRef.current = true;
-    abortControllerRef.current = new AbortController();
 
     try {
-      const response = await fetch(`${SUPABASE_URL}/functions/v1/scan-opportunities`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
+      console.log('[scanner] invoking scan-opportunities for', networksToScan);
+      const { data: result, error: fnError } = await supabase.functions.invoke('scan-opportunities', {
+        body: {
           networks: networksToScan,
-          minProfitPercent: 0.03, // Low threshold to catch more opportunities
+          minProfitPercent: 0.03,
           minProfitUsd: 3,
           maxConcurrent: 15,
-        }),
-        signal: abortControllerRef.current.signal,
+        },
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Scanner failed: ${response.status} - ${errorText}`);
+      if (fnError) {
+        throw new Error(`Scanner failed: ${fnError.message}`);
       }
 
-      const result = await response.json();
-      
       // Update scan stats
       setState(prev => ({
         ...prev,
-        networksScanned: result.networksScanned || networksToScan,
+        networksScanned: result?.networksScanned || networksToScan,
         scanStats: {
-          totalPairsScanned: result.totalPairsScanned || 0,
-          opportunitiesFound: result.opportunities?.length || 0,
-          avgConfidence: result.opportunities?.length > 0 
+          totalPairsScanned: result?.totalPairsScanned || 0,
+          opportunitiesFound: result?.opportunities?.length || 0,
+          avgConfidence: result?.opportunities?.length > 0 
             ? result.opportunities.reduce((sum: number, o: BackendOpportunity) => sum + o.confidence, 0) / result.opportunities.length 
             : 0,
-          lastGasPrice: result.gasEstimates || {},
+          lastGasPrice: result?.gasEstimates || {},
         },
+        scanError: null,
       }));
 
-      if (result.opportunities && Array.isArray(result.opportunities)) {
-        // Store backend opportunities for execution (includes amountIn)
+      if (result?.opportunities && Array.isArray(result.opportunities)) {
+        console.log(`[scanner] received ${result.opportunities.length} opportunities`);
         for (const opp of result.opportunities as BackendOpportunity[]) {
           backendOpportunitiesRef.current.set(opp.id, opp);
         }
@@ -184,11 +171,7 @@ export function useRealArbitrage(
 
       return [];
     } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        // Request was cancelled, don't treat as error
-        return [];
-      }
-      console.error('Error scanning networks:', error);
+      console.error('[scanner] Error scanning networks:', error);
       setState(prev => ({
         ...prev,
         scanError: error instanceof Error ? error.message : 'Unknown error',
