@@ -37,7 +37,19 @@ const Index = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isConnecting, setIsConnecting] = useState(false);
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(null);
-  const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances } = useWallet();
+  const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances, getSigner } = useWallet();
+
+  // Resolve a signer when wallet connects (for real on-chain execution)
+  const [signer, setSigner] = useState<ethers.Signer | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (wallet.isConnected) {
+      getSigner().then((s) => { if (!cancelled) setSigner(s); });
+    } else {
+      setSigner(null);
+    }
+    return () => { cancelled = true; };
+  }, [wallet.isConnected, wallet.address, wallet.network, getSigner]);
 
   // Tap to earn
   const { points, adStats } = useTapToEarn(wallet.address || '', wallet.network || 'ethereum');
@@ -53,7 +65,7 @@ const Index = () => {
     executeOpportunity: realExecuteOpportunity,
     autoExecute: realAutoExecute,
     toggleAutoExecute: toggleRealAutoExecute,
-  } = useRealArbitrage(wallet.address, wallet.network as Network | null, null);
+  } = useRealArbitrage(wallet.address, wallet.network as Network | null, signer);
 
   // Mock scanner for config UI only (stats tracking)
   const {
@@ -69,16 +81,33 @@ const Index = () => {
   // Use real scanner state
   const isScanning = realIsScanning || config.isActive;
 
-  // Start/stop scanner - only use real scanner
+  // Start/stop scanner
   const handleStartScanning = useCallback(async () => {
-    await realStartScanning();
-    startScanner(); // for config.isActive state
+    toast({ title: 'Scanner starting', description: 'Searching for arbitrage opportunities…' });
+    startScanner();
+    try {
+      await realStartScanning();
+    } catch (e) {
+      toast({
+        title: 'Scanner failed to start',
+        description: e instanceof Error ? e.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    }
   }, [realStartScanning, startScanner]);
 
   const handleStopScanning = useCallback(() => {
     realStopScanning();
     stopScanner();
+    toast({ title: 'Scanner stopped' });
   }, [realStopScanning, stopScanner]);
+
+  // Surface scan errors as toasts
+  useEffect(() => {
+    if (scanError) {
+      toast({ title: 'Scanner error', description: scanError, variant: 'destructive' });
+    }
+  }, [scanError]);
 
   // Use only real opportunities
   const combinedOpportunities = realOpportunities;

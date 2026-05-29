@@ -478,6 +478,16 @@ export function useWallet() {
     return sig as string;
   }, [wallet.address]);
 
+  const getSigner = useCallback(async () => {
+    if (!providerRef.current) return null;
+    try {
+      return await providerRef.current.getSigner();
+    } catch (err) {
+      console.error('Failed to get signer:', err);
+      return null;
+    }
+  }, []);
+
   return {
     wallet,
     connect,
@@ -486,6 +496,8 @@ export function useWallet() {
     networks: NETWORKS,
     refreshBalances,
     signTypedData,
+    getSigner,
+    browserProvider: providerRef.current,
   };
 }
 
