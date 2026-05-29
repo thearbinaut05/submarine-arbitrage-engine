@@ -497,6 +497,9 @@ export function useRealArbitrage(
         throw new Error(`Missing amountIn for opportunity ${opportunity.id}. Please re-scan for opportunities.`);
       }
 
+      // If we have a signer, ask backend to PREPARE the tx (build calldata) and broadcast from the user's wallet.
+      const useClientSigner = !!signer;
+
       const response = await fetch(`${SUPABASE_URL}/functions/v1/execute-flash-loan`, {
         method: 'POST',
         headers: { 
@@ -515,7 +518,8 @@ export function useRealArbitrage(
           walletAddress: connectedWallet,
           profitRecipient: connectedWallet,
           enforceConnectedWallet: true,
-          enforceGasless: true,
+          enforceGasless: !useClientSigner,
+          prepareOnly: useClientSigner,
           minProfit: opportunity.netProfit * 0.8,
           isSubmarine: true,
         }),
@@ -527,7 +531,73 @@ export function useRealArbitrage(
       }
 
       const result = await response.json();
-      const submittedHash = result.taskId || result.txHash;
+      let submittedHash: string | undefined = result.taskId || result.txHash;
+
+      // === Client signing path ===
+      if (useClientSigner && result.prepared && result.tx) {
+        const erc20Abi = [
+          'function allowance(address owner, address spender) view returns (uint256)',
+          'function approve(address spender, uint256 amount) returns (bool)',
+        ];
+
+        // Approve token spend if needed
+        if (result.approval?.token && result.approval?.spender) {
+          try {
+            const token = new ethers.Contract(result.approval.token, erc20Abi, signer!);
+            const owner = await signer!.getAddress();
+            const current: bigint = await token.allowance(owner, result.approval.spender);
+            const needed = BigInt(result.approval.amount);
+            if (current < needed) {
+              const approveTx = await token.approve(result.approval.spender, ethers.MaxUint256);
+              await approveTx.wait();
+            }
+          } catch (approveErr) {
+            console.warn('Token approval skipped/failed:', approveErr);
+          }
+        }
+
+        const sentTx = await signer!.sendTransaction({
+          to: result.tx.to,
+          data: result.tx.data,
+          value: BigInt(result.tx.value || '0'),
+        });
+        submittedHash = sentTx.hash;
+
+        // Wait in background; mark completed when mined
+        sentTx.wait().then((receipt) => {
+          const finalHash = receipt?.hash || sentTx.hash;
+          const completedOpp: ArbitrageOpportunity = {
+            ...executingOpp,
+            status: 'completed',
+            txHash: finalHash,
+            explorerUrl: getExplorerUrl(targetNetwork, finalHash),
+            isRealExecution: true,
+            executedAt: Date.now(),
+          };
+          executingOpportunitiesRef.current.delete(opportunity.id);
+          completedOpportunitiesRef.current.set(opportunity.id, completedOpp);
+          setState(prev => ({
+            ...prev,
+            opportunities: prev.opportunities.map(op =>
+              op.id === opportunity.id
+                ? { ...op, status: 'completed' as const, txHash: finalHash, explorerUrl: getExplorerUrl(targetNetwork, finalHash), isRealExecution: true, executedAt: Date.now() }
+                : op
+            ),
+            transactionsExecuted: prev.transactionsExecuted + 1,
+            totalProfit: prev.totalProfit + (opportunity.netProfit || 0),
+          }));
+        }).catch((waitErr) => {
+          console.error('Tx wait failed:', waitErr);
+          executingOpportunitiesRef.current.delete(opportunity.id);
+          completedOpportunitiesRef.current.set(opportunity.id, { ...executingOpp, status: 'failed' });
+          setState(prev => ({
+            ...prev,
+            opportunities: prev.opportunities.map(op =>
+              op.id === opportunity.id ? { ...op, status: 'failed' as const } : op
+            ),
+          }));
+        });
+      }
 
       if (!submittedHash) {
         throw new Error(result.error || 'Execution did not return a transaction hash');
@@ -550,7 +620,10 @@ export function useRealArbitrage(
         ),
       }));
 
-      pollForTransaction(opportunity.id, targetNetwork, submittedHash);
+      // Backend-signed path still needs polling
+      if (!useClientSigner) {
+        pollForTransaction(opportunity.id, targetNetwork, submittedHash);
+      }
 
       return { 
         hash: submittedHash, 
@@ -580,7 +653,8 @@ export function useRealArbitrage(
       }));
       throw error;
     }
-  }, [walletAddress, getAuthToken, pollForTransaction]);
+  }, [walletAddress, signer, getAuthToken, pollForTransaction]);
+
 
   const toggleAutoExecute = useCallback(() => {
     setAutoExecute(prev => !prev);
