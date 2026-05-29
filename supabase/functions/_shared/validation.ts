@@ -11,6 +11,8 @@ export const FlashLoanSchema = z.object({
   network: networkEnum,
   tokenIn: tokenRef,
   tokenOut: tokenRef,
+  tokenInAddress: ethAddress.optional(),
+  tokenOutAddress: ethAddress.optional(),
   amountIn: z.union([numericString, z.number().positive()]).transform((v) => String(v)),
   sourceDex: z.string().min(1).max(100),
   targetDex: z.string().min(1).max(100),
@@ -18,7 +20,11 @@ export const FlashLoanSchema = z.object({
   walletAddress: ethAddress.optional(),
   useGelato: z.boolean().optional(),
   opportunityId: opportunityRef.optional(),
+  prepareOnly: z.boolean().optional(),
+  enforceConnectedWallet: z.boolean().optional(),
+  enforceGasless: z.boolean().optional(),
 }).passthrough();
+
 
 export const GaslessRelaySchema = z.object({
   network: networkEnum,
