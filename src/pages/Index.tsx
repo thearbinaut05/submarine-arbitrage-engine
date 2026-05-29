@@ -102,6 +102,13 @@ const Index = () => {
     toast({ title: 'Scanner stopped' });
   }, [realStopScanning, stopScanner]);
 
+  // Surface scan errors as toasts
+  useEffect(() => {
+    if (scanError) {
+      toast({ title: 'Scanner error', description: scanError, variant: 'destructive' });
+    }
+  }, [scanError]);
+
   // Use only real opportunities
   const combinedOpportunities = realOpportunities;
 
