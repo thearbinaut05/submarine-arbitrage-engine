@@ -1010,6 +1010,45 @@ serve(async (req) => {
       executionMethod = routerInfo.isV3 ? 'Uniswap V3 Direct' : 'DEX V2 Direct';
     }
 
+    // ===== prepareOnly: return unsigned tx so the connected wallet signs and broadcasts =====
+    if ((body as any).prepareOnly === true) {
+      const explorerUrl = EXPLORER_URLS[network] || 'https://etherscan.io';
+      return new Response(JSON.stringify({
+        success: true,
+        prepared: true,
+        method: executionMethod,
+        network,
+        chainId,
+        tx: {
+          to: txData.to,
+          data: txData.data,
+          value: txData.value || '0',
+        },
+        approval: {
+          token: tokenInData.address,
+          spender: txData.to,
+          amount: amountIn,
+        },
+        trade: {
+          tokenIn: tokenInData.symbol,
+          tokenOut: tokenOutData.symbol,
+          tokenInAddress: tokenInData.address,
+          tokenOutAddress: tokenOutData.address,
+          amountIn,
+          sourceDex,
+          targetDex,
+          slippage: `${slippageTolerance}%`,
+          expectedOutput: aggregatorQuote?.toAmount ?? null,
+        },
+        explorerUrl,
+        gasPrice: `${currentGasPrice.toFixed(2)} gwei`,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+
     // Create opportunity record
     let oppId = opportunityId;
     if (!oppId) {
