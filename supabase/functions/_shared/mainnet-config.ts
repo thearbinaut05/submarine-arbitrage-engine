@@ -627,8 +627,8 @@ export const SCANNER_CONFIG = {
   maxSlippage: 3.0,
   
   // Trade size settings
-  defaultTradeAmountUsd: 3000, // Smaller trades for better execution
-  maxTradeAmountUsd: 30000,
+  defaultTradeAmountUsd: 100, // Conservative default so user wallets can cover the trade
+  maxTradeAmountUsd: 5000,
   minLiquidityUsd: 10000, // Lowered liquidity requirement
   
   // MEV protection
