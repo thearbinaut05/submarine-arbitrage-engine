@@ -450,9 +450,26 @@ async function calculateOpportunity(
     SCANNER_CONFIG.defaultTradeAmountUsd,
     minLiquidity * 0.1
   );
-  
+
+  // Compute USD price of tokenIn. The DEX price field is tokenOut-per-tokenIn,
+  // so it only equals USD/token when tokenOut is a stablecoin. Use a lookup
+  // for non-stable tokenIn to avoid grossly oversized amountIn (a frequent
+  // cause of on-chain reverts when the user wallet cannot cover the size).
+  const STABLES = new Set(['USDC','USDT','DAI','BUSD','FRAX','USDC.e','USDT.e','DAI.e']);
+  const REF_USD: Record<string, number> = {
+    WETH: 3500, ETH: 3500, WBTC: 65000, BTC: 65000, BTCB: 65000,
+    WBNB: 600, BNB: 600, WMATIC: 0.7, MATIC: 0.7, AVAX: 35, WAVAX: 35,
+    LINK: 15, UNI: 8, AAVE: 100, CBETH: 3700,
+  };
+  let tokenInPriceUsd: number;
+  if (STABLES.has(tokenIn)) tokenInPriceUsd = 1;
+  else if (STABLES.has(tokenOut)) tokenInPriceUsd = bestBuy.price;
+  else tokenInPriceUsd = REF_USD[tokenIn] ?? 0;
+
+  if (!tokenInPriceUsd || tokenInPriceUsd <= 0) return null;
+
   const tokenInDecimals = tokens[tokenIn].decimals;
-  const tokenInAmount = tradeAmountUsd / bestBuy.price;
+  const tokenInAmount = tradeAmountUsd / tokenInPriceUsd;
   const amountInWei = BigInt(Math.floor(tokenInAmount * (10 ** tokenInDecimals)));
   
   // Filter out zero amounts (rounding issue with high-price tokens)
