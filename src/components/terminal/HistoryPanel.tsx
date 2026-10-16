@@ -1,0 +1,12 @@
+import { useEffect, useState } from 'react';
+import { History, ExternalLink } from 'lucide-react';
+import { supabase, isSupabaseConfigured } from '@/integrations/supabase/client';
+import { NETWORKS } from '@/hooks/useWallet';
+import { Network } from '@/types/defi';
+interface TxRow{id?:string;hash?:string;real_tx_hash?:string;status?:string;network?:string;created_at?:string;type?:string}
+export function HistoryPanel({walletAddress}:{walletAddress:string|null}){
+ const[rows,setRows]=useState<TxRow[]>([]); const[msg,setMsg]=useState('');
+ useEffect(()=>{const local:TxRow[]=[]; try{const r=localStorage.getItem('submarine_local_history'); if(r)local.push(...JSON.parse(r))}catch{} setRows(local); if(!isSupabaseConfigured||!walletAddress){setMsg(local.length?'':'No local history yet. Backend history needs Supabase + connected wallet.');return} (async()=>{try{const{data,error}=await (supabase as any).from('transactions').select('*').order('created_at',{ascending:false}).limit(50); if(error)throw error; if(data)setRows([...(data as TxRow[]),...local])}catch(e){setMsg('Backend history unavailable — showing local only')}})()},[walletAddress]);
+ return(<div className="p-4 rounded-lg border border-border bg-card space-y-3"><h3 className="font-semibold flex items-center gap-2"><History className="w-5 h-5 text-primary"/>History</h3>{msg&&<p className="text-xs text-muted-foreground">{msg}</p>}{rows.length===0?<p className="text-sm text-muted-foreground">No transactions yet. Built-in wallet sends and executions appear here.</p>:(<div className="space-y-2">{rows.slice(0,50).map((r,i)=>{const hash=r.real_tx_hash||r.hash; const net=(r.network as Network)||'ethereum'; return(<div key={r.id||i} className="flex items-center justify-between p-2 rounded bg-muted/30 border border-border"><div><p className="text-xs font-mono">{hash?hash.slice(0,10)+'...'+hash.slice(-6):'—'}</p><p className="text-xs text-muted-foreground">{r.type||'transaction'} • {net}</p></div><div className="flex items-center gap-2"><span className="text-xs">{r.status||''}</span>{hash&&<a target="_blank" rel="noreferrer" href={(NETWORKS[net]?.explorer||'https://etherscan.io')+'/tx/'+hash}><ExternalLink className="w-3 h-3 text-primary"/></a>}</div></div>)})}</div>)}</div>);
+}
+export function recordLocalHistory(entry:TxRow){try{const r=localStorage.getItem('submarine_local_history'); const a=r?JSON.parse(r):[]; a.unshift({...entry,created_at:new Date().toISOString()}); localStorage.setItem('submarine_local_history',JSON.stringify(a.slice(0,100)))}catch{}}

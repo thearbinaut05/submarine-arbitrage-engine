@@ -1,0 +1,10 @@
+import { useState } from 'react';
+import { LogIn, LogOut, Mail } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
+export function AccountPanel(){
+ const{user,isLoading,authError,isSupabaseConfigured,signInWithGoogle,signInWithEmail,signOut}=useAuth(); const[email,setEmail]=useState('');
+ return(<div className="p-4 rounded-lg border border-border bg-card space-y-3"><div className="flex items-center justify-between"><h3 className="font-semibold flex items-center gap-2"><LogIn className="w-5 h-5 text-primary"/>Account (optional)</h3><Badge variant="outline" className="text-xs">{isSupabaseConfigured?'Supabase configured':'Supabase optional'}</Badge></div><p className="text-xs text-muted-foreground">Google/email login is only for syncing when Supabase is available. Scanner and built-in wallet work completely without an account or Supabase.</p>{authError&&<div className="p-3 rounded bg-amber-500/10 border border-amber-500/30 text-xs whitespace-pre-wrap">{authError}</div>}{isLoading?<p className="text-sm text-muted-foreground">Checking session...</p>:user?(<div className="flex items-center justify-between gap-3 flex-wrap"><div><p className="text-sm font-medium">{user.email}</p><p className="text-xs text-muted-foreground">Signed in</p></div><Button variant="outline" size="sm" onClick={signOut}><LogOut className="w-4 h-4 mr-1"/>Sign out</Button></div>):(<div className="space-y-3"><Button className="w-full" onClick={signInWithGoogle}>Continue with Google</Button><div className="flex gap-2"><Input placeholder="Email for magic link" value={email} onChange={e=>setEmail(e.target.value)}/><Button variant="outline" onClick={()=>email&&signInWithEmail(email)}><Mail className="w-4 h-4 mr-1"/>Email link</Button></div><p className="text-xs text-muted-foreground">Enable Google in Supabase Dashboard &gt; Authentication &gt; Providers &gt; Google and add this site URL as redirect. Until then use the built-in wallet below.</p></div>)}</div>);
+}
