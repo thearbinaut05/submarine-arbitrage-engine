@@ -1,372 +1,45 @@
-import { useState, useCallback, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  RefreshCw, 
-  Wallet as WalletIcon, 
-  Copy, 
-  Zap, 
-  Shield, 
-  Activity, 
-  TrendingUp,
-  Settings,
-  ChevronDown,
-  Loader2
-} from 'lucide-react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
 import { Header } from '@/components/terminal/Header';
 import { Sidebar } from '@/components/terminal/Sidebar';
 import { ScannerControls } from '@/components/terminal/ScannerControls';
-import { OpportunityList, OpportunityListSkeleton } from '@/components/terminal/OpportunityList';
+import { OpportunityList } from '@/components/terminal/OpportunityList';
 import { GaslessTransactionBuilder } from '@/components/terminal/GaslessTransactionBuilder';
 import { PositionRebalancer } from '@/components/terminal/PositionRebalancer';
 import { DashboardStats } from '@/components/terminal/DashboardStats';
 import { EmbeddedWalletPanel } from '@/components/terminal/EmbeddedWalletPanel';
+import { LocalWalletPanel } from '@/components/terminal/LocalWalletPanel';
+import { AccountPanel } from '@/components/terminal/AccountPanel';
+import { HistoryPanel, recordLocalHistory } from '@/components/terminal/HistoryPanel';
 import { WalletAssistant, type AssistantAction } from '@/components/terminal/WalletAssistant';
 import { NetworkMismatchBanner } from '@/components/terminal/NetworkMismatchBanner';
 import { toast } from '@/hooks/use-toast';
 import { AdBanner } from '@/components/ads/AdBanner';
 import { useTapToEarn } from '@/hooks/useTapToEarn';
+import { useUnifiedScanner } from '@/hooks/useUnifiedScanner';
 import { useRealArbitrage } from '@/hooks/useRealArbitrage';
-import { useWallet, TokenBalance, EnhancedWalletState } from '@/hooks/useWallet';
-import { useArbitrageScanner } from '@/hooks/useArbitrageScanner';
-import { Button } from '@/components/ui/button';
+import { useWallet } from '@/hooks/useWallet';
 import { ScannerConfig, Network } from '@/types/defi';
 import { ethers } from 'ethers';
-import { cn } from '@/lib/utils';
-
-const Index = () => {
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(null);
-  const { wallet, connect, disconnect, switchNetwork, networks, refreshBalances, getSigner } = useWallet();
-
-  // Resolve a signer when wallet connects (for real on-chain execution)
-  const [signer, setSigner] = useState<ethers.Signer | null>(null);
-  useEffect(() => {
-    let cancelled = false;
-    if (wallet.isConnected) {
-      getSigner().then((s) => { if (!cancelled) setSigner(s); });
-    } else {
-      setSigner(null);
-    }
-    return () => { cancelled = true; };
-  }, [wallet.isConnected, wallet.address, wallet.network, getSigner]);
-
-  // Tap to earn
-  const { points, adStats } = useTapToEarn(wallet.address || '', wallet.network || 'ethereum');
-
-  // Real arbitrage hook - primary scanner & executor
-  const {
-    opportunities: realOpportunities,
-    isScanning: realIsScanning,
-    lastScanTime,
-    scanError,
-    startScanning: realStartScanning,
-    stopScanning: realStopScanning,
-    executeOpportunity: realExecuteOpportunity,
-    autoExecute: realAutoExecute,
-    toggleAutoExecute: toggleRealAutoExecute,
-  } = useRealArbitrage(wallet.address, wallet.network as Network | null, signer);
-
-  // Mock scanner for config UI only (stats tracking)
-  const {
-    config,
-    stats,
-    startScanner,
-    stopScanner,
-    toggleAutoExecute,
-    executeOpportunity: executeMockOpportunity,
-    updateConfig,
-  } = useArbitrageScanner();
-
-  // Use real scanner state
-  const isScanning = realIsScanning || config.isActive;
-
-  // Start/stop scanner
-  const handleStartScanning = useCallback(async () => {
-    toast({ title: 'Scanner starting', description: 'Searching for arbitrage opportunities…' });
-    startScanner();
-    try {
-      await realStartScanning();
-    } catch (e) {
-      toast({
-        title: 'Scanner failed to start',
-        description: e instanceof Error ? e.message : 'Unknown error',
-        variant: 'destructive',
-      });
-    }
-  }, [realStartScanning, startScanner]);
-
-  const handleStopScanning = useCallback(() => {
-    realStopScanning();
-    stopScanner();
-    toast({ title: 'Scanner stopped' });
-  }, [realStopScanning, stopScanner]);
-
-  // Surface scan errors as toasts
-  useEffect(() => {
-    if (scanError) {
-      toast({ title: 'Scanner error', description: scanError, variant: 'destructive' });
-    }
-  }, [scanError]);
-
-  // Use only real opportunities
-  const combinedOpportunities = realOpportunities;
-
-  // Currently-selected opportunity (drives network mismatch banner)
-  const selectedOpportunity = selectedOpportunityId
-    ? realOpportunities.find(op => op.id === selectedOpportunityId) ?? null
-    : null;
-  const requiredNetwork: Network | null = selectedOpportunity?.sourceNetwork ?? null;
-
-  // Execute opportunity - auto-prompts to switch network if wallet is on the wrong chain
-  const handleExecute = useCallback(async (id: string) => {
-    const opportunity = realOpportunities.find(op => op.id === id);
-    if (!opportunity) return;
-
-    if (wallet.isConnected && wallet.network !== opportunity.sourceNetwork) {
-      toast({
-        title: 'Switching network',
-        description: `This trade runs on ${opportunity.sourceNetwork}. Approving switch in your wallet…`,
-      });
-      try {
-        await switchNetwork(opportunity.sourceNetwork);
-      } catch (err) {
-        toast({
-          title: 'Network switch required',
-          description: 'Please approve the network switch in your wallet to execute this trade.',
-          variant: 'destructive',
-        });
-        setSelectedOpportunityId(id);
-        return;
-      }
-    }
-
-    try {
-      await realExecuteOpportunity(opportunity);
-    } catch (error) {
-      console.error('Execution failed:', error);
-    }
-  }, [realOpportunities, realExecuteOpportunity, wallet.isConnected, wallet.network, switchNetwork]);
-
-  // Handle wallet connection with error handling
-  const handleConnect = useCallback(async (walletType: 'metamask' | 'bitget' | 'injected' = 'injected') => {
-    setIsConnecting(true);
-    try {
-      await connect(walletType);
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
-      setActiveTab('wallet');
-    } finally {
-      setIsConnecting(false);
-    }
-  }, [connect]);
-
-  // Assistant action dispatcher — deep links + wallet/trading control
-  const handleAssistantAction = useCallback(async (action: AssistantAction) => {
-    try {
-      switch (action.type) {
-        case 'open_tab':
-          setActiveTab(action.tab);
-          break;
-        case 'select_opportunity':
-          setSelectedOpportunityId(action.opportunityId);
-          setActiveTab('scanner');
-          setTimeout(() => {
-            document.getElementById(`opp-${action.opportunityId}`)
-              ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          }, 250);
-          toast({ title: 'Opportunity selected', description: 'Scroll to the highlighted card.' });
-          break;
-        case 'execute_opportunity':
-          setSelectedOpportunityId(action.opportunityId);
-          setActiveTab('scanner');
-          await handleExecute(action.opportunityId);
-          break;
-        case 'switch_network':
-          await switchNetwork(action.network as Network);
-          break;
-        case 'start_scanner':
-          await handleStartScanning();
-          break;
-        case 'stop_scanner':
-          handleStopScanning();
-          break;
-        case 'refresh_balances':
-          await refreshBalances();
-          break;
-        case 'connect_wallet':
-          await handleConnect((action.walletType as 'metamask' | 'bitget' | 'injected') ?? 'injected');
-          break;
-        case 'disconnect_wallet':
-          disconnect();
-          break;
-      }
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Action failed';
-      toast({ title: 'Assistant action failed', description: msg, variant: 'destructive' });
-    }
-  }, [handleExecute, switchNetwork, handleStartScanning, handleStopScanning, refreshBalances, handleConnect, disconnect]);
-
-  return (
-    <div className="min-h-screen bg-background flex flex-col">
-      {/* Background Effects */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-grid-pattern bg-grid opacity-20" />
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-primary/5 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-accent/5 rounded-full blur-3xl" />
-      </div>
-
-      {/* Header */}
-      <Header 
-        totalProfit={stats.totalProfit}
-        successRate={stats.successRate}
-        isScanning={isScanning}
-        wallet={wallet}
-        onConnect={handleConnect}
-        onDisconnect={disconnect}
-        onSwitchNetwork={switchNetwork}
-        onRefreshBalances={refreshBalances}
-      />
-
-      {/* Main Content */}
-      <div className="flex-1 flex relative">
-        <Sidebar activeTab={activeTab} onTabChange={setActiveTab} />
-
-        <main className="flex-1 overflow-auto p-4 lg:p-6">
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.2 }}
-            className="h-full max-w-7xl mx-auto space-y-4"
-          >
-            {/* Auto network detection prompt */}
-            {wallet.isConnected && requiredNetwork && (
-              <NetworkMismatchBanner
-                walletNetwork={wallet.network}
-                requiredNetwork={requiredNetwork}
-                reason={`Selected opportunity runs on ${requiredNetwork}.`}
-                onSwitch={switchNetwork}
-                onDismiss={() => setSelectedOpportunityId(null)}
-              />
-            )}
-            {activeTab === 'dashboard' && (
-              <div className="space-y-6">
-                {/* Dashboard Stats */}
-                <DashboardStats 
-                  opportunities={combinedOpportunities}
-                  totalProfit={stats.totalProfit}
-                  successRate={stats.successRate}
-                  isScanning={isScanning}
-                  points={points.points}
-                  adRevenue={adStats.todayRevenue}
-                />
-                {/* In-App Ad Banner */}
-                <div className="flex justify-center mb-6">
-                  <AdBanner 
-                    walletAddress={wallet.address} 
-                    network={wallet.network} 
-                  />
-                </div>
-                {/* Main Grid */}
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                  {/* Left Column - Scanner & Controls */}
-                  <div className="xl:col-span-1 space-y-6">
-                    <ScannerControls
-                      config={{ ...config, autoExecute: realAutoExecute }}
-                      stats={{
-                        totalScanned: stats.totalScanned + (lastScanTime ? 1 : 0),
-                        totalProfit: stats.totalProfit,
-                        successRate: stats.successRate,
-                        avgProfit: stats.avgProfit,
-                      }}
-                      onStart={handleStartScanning}
-                      onStop={handleStopScanning}
-                      onToggleAutoExecute={() => {
-                        toggleAutoExecute();
-                        toggleRealAutoExecute();
-                      }}
-                      onUpdateConfig={updateConfig}
-                    />
-                    <GaslessTransactionBuilder isWalletConnected={wallet.isConnected} />
-                  </div>
-
-                  {/* Right Column - Opportunities */}
-                  <div className="xl:col-span-2 h-[calc(100vh-14rem)] min-h-[500px]">
-                    <OpportunityList
-                      opportunities={combinedOpportunities}
-                      onExecute={handleExecute}
-                      isScanning={isScanning}
-                      selectedOpportunityId={selectedOpportunityId}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Other tabs unchanged */}
-            {activeTab === 'scanner' && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="text-2xl font-sans font-bold text-foreground">Arbitrage Scanner</h2>
-                    <p className="text-muted-foreground mt-1">
-                      Real-time on-chain scanning across 7 networks with live execution via Gelato relay
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {scanError && (
-                      <div className="px-3 py-1.5 rounded-lg bg-destructive/10 border border-destructive/30 text-destructive text-sm">
-                        {scanError}
-                      </div>
-                    )}
-                    {lastScanTime && (
-                      <span className="text-xs text-muted-foreground">
-                        Last scan: {new Date(lastScanTime).toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                  <div className="lg:col-span-1">
-                <ScannerControls
-                      config={config}
-                      stats={{
-                        totalScanned: stats.totalScanned,
-                        totalProfit: stats.totalProfit,
-                        successRate: stats.successRate,
-                        avgProfit: stats.avgProfit,
-                      }}
-                      onStart={handleStartScanning}
-                      onStop={handleStopScanning}
-                      onToggleAutoExecute={toggleAutoExecute}
-                      onUpdateConfig={updateConfig}
-                    />
-                  </div>
-                  <div className="lg:col-span-2 h-[calc(100vh-16rem)]">
-                    <OpportunityList
-                      opportunities={combinedOpportunities}
-                      onExecute={handleExecute}
-                      isScanning={isScanning}
-                      selectedOpportunityId={selectedOpportunityId}
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Rest of tabs unchanged - truncated for brevity */}
-            {/* ... other tabs as in original ... */}
-          </motion.div>
-        </main>
-      </div>
-
-      {/* AI Wallet Assistant (Bitget skill style) */}
-      <WalletAssistant walletAddress={wallet.address} network={wallet.network} onAction={handleAssistantAction} />
-    </div>
-  );
+const Index=()=>{
+ const[activeTab,setActiveTab]=useState('dashboard'); const[selectedOpportunityId,setSelectedOpportunityId]=useState<string|null>(null);
+ const{wallet,connect,disconnect,switchNetwork,refreshBalances,getSigner}=useWallet();
+ const[signer,setSigner]=useState<ethers.Signer|null>(null);
+ useEffect(()=>{let c=false; if(wallet.isConnected){getSigner().then(s=>{if(!c)setSigner(s)})}else setSigner(null); return()=>{c=true}},[wallet.isConnected,wallet.address,wallet.network,getSigner]);
+ const{points,adStats}=useTapToEarn(wallet.address||'',wallet.network||'ethereum');
+ const[config,setConfig]=useState<ScannerConfig>({isActive:false,autoExecute:false,minProfitPercent:0.03,minProfitUsd:3,maxGasGwei:100,networks:['ethereum','arbitrum','polygon','bsc'],scanInterval:15000});
+ const unified=useUnifiedScanner(); const real=useRealArbitrage(wallet.address,wallet.network as Network|null,signer);
+ const opportunities=useMemo(()=>[...unified.opportunities,...real.opportunities].filter((o,i,a)=>a.findIndex(x=>x.id===o.id)===i).sort((a,b)=>b.netProfit-a.netProfit).slice(0,100),[unified.opportunities,real.opportunities]);
+ const isScanning=unified.isScanning||real.isScanning||config.isActive; const scanError=unified.scanError||real.scanError; const lastScanTime=unified.lastScanTime||real.lastScanTime;
+ const stats=useMemo(()=>({totalScanned:unified.stats.totalScanned,totalProfit:real.totalProfit||0,successRate:0,avgProfit:opportunities.length?opportunities.reduce((s,o)=>s+o.netProfit,0)/opportunities.length:0}),[unified.stats,real.totalProfit,opportunities]);
+ const handleStart=useCallback(async()=>{setConfig(c=>({...c,isActive:true})); toast({title:'Scanner starting',description:'On-chain scanning '+config.networks.join(', ')+' - works without Supabase'}); try{await unified.startScanning(config.networks as Network[])}catch(e){toast({title:'Scanner error',description:e instanceof Error?e.message:'Unknown',variant:'destructive'})} real.startScanning().catch(()=>{})},[unified,real,config.networks]);
+ const handleStop=useCallback(()=>{setConfig(c=>({...c,isActive:false})); unified.stopScanning(); real.stopScanning(); toast({title:'Scanner stopped'})},[unified,real]);
+ const selected=selectedOpportunityId?opportunities.find(o=>o.id===selectedOpportunityId)??null:null; const requiredNetwork:Network|null=selected?.sourceNetwork??null;
+ const handleExecute=useCallback(async(id:string)=>{const opp=opportunities.find(o=>o.id===id); if(!opp)return; if(wallet.isConnected&&wallet.network!==opp.sourceNetwork){try{await switchNetwork(opp.sourceNetwork)}catch{toast({title:'Network switch required',description:'Approve switch in wallet',variant:'destructive'}); setSelectedOpportunityId(id); return}} try{await real.executeOpportunity(opp); recordLocalHistory({hash:opp.txHash,status:opp.status,network:opp.sourceNetwork,type:opp.type})}catch(e){toast({title:'Execution unavailable',description:(e instanceof Error?e.message:'Failed')+'. Scanning works without Supabase; flash-loan execution needs connected wallet/relayer. See Portfolio tab.',variant:'destructive'})}},[opportunities,real,wallet,switchNetwork]);
+ const handleConnect=useCallback(async(t:'metamask'|'bitget'|'injected'='injected')=>{try{await connect(t)}catch{toast({title:'No browser wallet found',description:'Use built-in wallet in Portfolio tab - no extension needed',variant:'destructive'}); setActiveTab('wallet')}},[connect]);
+ const onAction=useCallback(async(a:AssistantAction)=>{try{switch(a.type){case'open_tab':setActiveTab(a.tab);break;case'select_opportunity':setSelectedOpportunityId(a.opportunityId);setActiveTab('scanner');break;case'execute_opportunity':setSelectedOpportunityId(a.opportunityId);setActiveTab('scanner');await handleExecute(a.opportunityId);break;case'switch_network':await switchNetwork(a.network as Network);break;case'start_scanner':await handleStart();break;case'stop_scanner':handleStop();break;case'refresh_balances':await refreshBalances();break;case'connect_wallet':await handleConnect((a.walletType as 'metamask'|'bitget'|'injected')??'injected');break;case'disconnect_wallet':disconnect();break}}catch(e){toast({title:'Action failed',description:e instanceof Error?e.message:'Failed',variant:'destructive'})}},[handleExecute,switchNetwork,handleStart,handleStop,refreshBalances,handleConnect,disconnect]);
+ const updateConfig=useCallback((u:Partial<ScannerConfig>)=>setConfig(c=>({...c,...u})),[]);
+ const controls=<ScannerControls config={{...config,isActive:isScanning,autoExecute:real.autoExecute}} stats={stats} onStart={handleStart} onStop={handleStop} onToggleAutoExecute={real.toggleAutoExecute} onUpdateConfig={updateConfig}/>;
+ return(<div className="min-h-screen bg-background flex flex-col"><Header totalProfit={stats.totalProfit} successRate={stats.successRate} isScanning={isScanning} wallet={wallet} onConnect={handleConnect} onDisconnect={disconnect} onSwitchNetwork={switchNetwork} onRefreshBalances={refreshBalances}/><div className="flex-1 flex relative"><Sidebar activeTab={activeTab} onTabChange={setActiveTab}/><main className="flex-1 overflow-auto p-4 lg:p-6"><motion.div key={activeTab} initial={{opacity:0,y:10}} animate={{opacity:1,y:0}} className="h-full max-w-7xl mx-auto space-y-4">{wallet.isConnected&&requiredNetwork&&<NetworkMismatchBanner walletNetwork={wallet.network} requiredNetwork={requiredNetwork} reason={'Selected opportunity runs on '+requiredNetwork} onSwitch={switchNetwork} onDismiss={()=>setSelectedOpportunityId(null)}/>}<div className="px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-muted-foreground">Scanner: <span className="text-foreground font-medium">{unified.source==='onchain'?'On-chain public RPCs - no Supabase needed':unified.source}</span>{scanError?' - '+scanError:''}{lastScanTime?' - Last '+new Date(lastScanTime).toLocaleTimeString():''}</div>{activeTab==='dashboard'&&(<div className="space-y-6"><DashboardStats opportunities={opportunities} totalProfit={stats.totalProfit} successRate={stats.successRate} isScanning={isScanning} points={points.points} adRevenue={adStats.todayRevenue}/><div className="flex justify-center"><AdBanner walletAddress={wallet.address} network={wallet.network}/></div><div className="grid grid-cols-1 xl:grid-cols-3 gap-6"><div className="xl:col-span-1 space-y-6">{controls}<GaslessTransactionBuilder isWalletConnected={wallet.isConnected}/></div><div className="xl:col-span-2 min-h-[500px]"><OpportunityList opportunities={opportunities} onExecute={handleExecute} isScanning={isScanning} selectedOpportunityId={selectedOpportunityId}/></div></div></div>)}{activeTab==='scanner'&&(<div className="space-y-6"><div><h2 className="text-2xl font-bold">Arbitrage Scanner</h2><p className="text-muted-foreground mt-1">On-chain DEX scanning via public RPCs. Works with or without Supabase.</p></div><div className="grid grid-cols-1 lg:grid-cols-3 gap-6"><div>{controls}</div><div className="lg:col-span-2"><OpportunityList opportunities={opportunities} onExecute={handleExecute} isScanning={isScanning} selectedOpportunityId={selectedOpportunityId}/></div></div></div>)}{activeTab==='wallet'&&(<div className="space-y-6"><div><h2 className="text-2xl font-bold">Portfolio / Wallet</h2><p className="text-muted-foreground mt-1">Built-in wallet works in-app, no extension, no Supabase. Google/external optional.</p></div><AccountPanel/><LocalWalletPanel/><div className="p-4 rounded-lg border border-border bg-card"><h3 className="font-semibold">External wallet (optional)</h3><p className="text-sm text-muted-foreground">{wallet.isConnected?('Connected '+wallet.address+' on '+wallet.network):'Connect MetaMask/Bitget from header if preferred. Not required.'}</p></div><EmbeddedWalletPanel connectedWalletAddress={wallet.address}/></div>)}{activeTab==='positions'&&(<div className="space-y-6"><h2 className="text-2xl font-bold">Positions</h2><PositionRebalancer isWalletConnected={wallet.isConnected}/></div>)}{activeTab==='rebalance'&&(<div className="space-y-6"><h2 className="text-2xl font-bold">Rebalance</h2><PositionRebalancer isWalletConnected={wallet.isConnected}/></div>)}{activeTab==='gasless'&&(<div className="space-y-6"><h2 className="text-2xl font-bold">Gasless Transactions</h2><GaslessTransactionBuilder isWalletConnected={wallet.isConnected}/></div>)}{activeTab==='history'&&(<div className="space-y-6"><h2 className="text-2xl font-bold">History</h2><HistoryPanel walletAddress={wallet.address}/></div>)}</motion.div></main></div><WalletAssistant walletAddress={wallet.address} network={wallet.network} onAction={onAction}/></div>);
 };
-
 export default Index;
-
