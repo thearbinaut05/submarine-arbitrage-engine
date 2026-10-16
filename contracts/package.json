@@ -10,8 +10,7 @@
     "deploy:arbitrum": "hardhat run scripts/deploy-mainnet.ts --network arbitrum",
     "deploy:polygon": "hardhat run scripts/deploy-mainnet.ts --network polygon",
     "deploy:base": "hardhat run scripts/deploy-mainnet.ts --network base",
-    "deploy:upgrades:mainnet": "hardhat run scripts/deploy-mainnet.ts --network mainnet",
-    "deploy:upgrades:sepolia": "hardhat run scripts/deploy-mainnet.ts --network sepolia",
+    "deploy:optimism": "hardhat run scripts/deploy-mainnet.ts --network optimism",
     "verify": "hardhat run scripts/verify-contracts.ts",
     "flatten": "hardhat flatten"
   },
