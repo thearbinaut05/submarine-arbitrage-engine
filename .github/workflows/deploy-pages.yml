@@ -17,24 +17,25 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - run: npm install --ignore-scripts
       - name: Build
         env:
           VITE_SUPABASE_URL: https://iaqzemamxjpdqvxcreil.supabase.co
           VITE_SUPABASE_PUBLISHABLE_KEY: sb_publishable_2iPiPUzsGJNy8I3Ln_iPnQ_-uvq8NeT
           VITE_BASE: /submarine-arbitrage-engine/
         run: npm run build
-      - name: SPA fallback for GitHub Pages
+      - name: SPA fallback
         run: cp dist/index.html dist/404.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: submarine-dist
+          path: dist
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
