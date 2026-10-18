@@ -60,14 +60,8 @@ export const CHAIN_IDS: Record<string, number> = {
 // These are the high‑volume paymasters we've identified (see PIMLICO_PAYMASTERS_ANALYSIS.md).
 // When the scanner is configured to use paymasters, profits will be sent directly to one of
 // these addresses and gas will be sponsored via our gasless relay path.
-export const PAYMASTERS: Record<string, string[]> = {
-  ethereum: [
-    '0xdCBE0C1A00e4Cf24AE77c52125e6e6b4F7C6Db4e',
-    '0x888888888888Ec68A58AB8094Cc1AD20Ba3D2402',
-    '0x7D3201fa7a85c0A5f9fA1c0C6b9D0B784368d2ac',
-  ],
-  // other networks can be added when/if paymasters deploy there
-};
+// DISABLED 2026-10-18: legacy third-party paymasters removed. Canonical gasless = authorised service relayer -> FlashArbExecutor.executeFlashLoanGasless. GaslessRelayer.sol is NOT an ERC-4337 paymaster.
+export const PAYMASTERS: Record<string, string[]> = {};
 
 // Block times in milliseconds (for scan timing)
 export const BLOCK_TIMES: Record<string, number> = {
@@ -116,39 +110,39 @@ export const CONTRACT_ADDRESSES: Record<string, {
   positionRebalancer: string;
 }> = {
   ethereum: {
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.ethereum,
-    positionRebalancer: UNISWAP_V3_ROUTER.ethereum,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   arbitrum: {
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.arbitrum,
-    positionRebalancer: UNISWAP_V3_ROUTER.arbitrum,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   polygon: {
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.polygon,
-    positionRebalancer: UNISWAP_V3_ROUTER.polygon,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   bsc: {
-    flashArbExecutor: '0x10ED43C718714eb63d5aA57B78B54704E256024E', // PancakeSwap V2
-    gaslessRelayer: '0x13f4EA83D0bd40E75C8222255bc855a974568Dd4', // PancakeSwap V3
-    positionRebalancer: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer // PancakeSwap V2
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer // PancakeSwap V3
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   optimism: {
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.optimism,
-    positionRebalancer: UNISWAP_V3_ROUTER.optimism,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   base: {
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.base,
-    positionRebalancer: UNISWAP_V3_ROUTER.base,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   avalanche: {
-    flashArbExecutor: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4', // TraderJoe
-    gaslessRelayer: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
-    positionRebalancer: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer // TraderJoe
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
 };
 
@@ -647,7 +641,7 @@ export const SCANNER_CONFIG = {
   // now deprecated and removed (the private key cannot be derived for a
   // contract).  If you really want a server‑side key instead you can still
   // fallback to the old direct path by disabling usePaymasters.
-  usePaymasters: true,
+  usePaymasters: false, // DISABLED: canonical path is service-relayer executeFlashLoanGasless
 };
 
 // Explorer URLs

@@ -1,8 +1,9 @@
 /**
- * Contract Addresses - Using ALREADY DEPLOYED Protocol Contracts
- * No custom deployment needed! These are production contracts on mainnet.
+ * FIXED 2026-10-18: flashArbExecutor = your deployed FlashArbExecutor (Aave V3), NOT Balancer Vault.
+ * gaslessRelayer = authorised service relayer EOA (pays gas), NOT a DEX router. Zero = not deployed.
+ * Set FLASH_ARB_EXECUTOR_<NETWORK> in Supabase secrets after deployment. Balancer/Uniswap
+ * constants below are protocol references only - never send executeFlashLoanGasless to them.
  */
-
 // Balancer V2 Vault - Same address on all chains (CREATE2)
 // FREE flash loans (0% fee)
 export const BALANCER_VAULT = '0xBA12222222228d8Ba445958a75a0704d566BF2C8';
@@ -29,45 +30,45 @@ export const SUSHISWAP_ROUTER: Record<string, string> = {
 export const CONTRACT_ADDRESSES = {
   ethereum: {
     chainId: 1,
-    flashArbExecutor: BALANCER_VAULT, // Use Balancer for flash loans
-    gaslessRelayer: UNISWAP_V3_ROUTER.ethereum,
-    positionRebalancer: UNISWAP_V3_ROUTER.ethereum,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer // Use Balancer for flash loans
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   arbitrum: {
     chainId: 42161,
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.arbitrum,
-    positionRebalancer: UNISWAP_V3_ROUTER.arbitrum,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   polygon: {
     chainId: 137,
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.polygon,
-    positionRebalancer: UNISWAP_V3_ROUTER.polygon,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   bsc: {
     chainId: 56,
-    flashArbExecutor: '0x10ED43C718714eb63d5aA57B78B54704E256024E', // PancakeSwap
-    gaslessRelayer: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
-    positionRebalancer: '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer // PancakeSwap
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   optimism: {
     chainId: 10,
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.optimism,
-    positionRebalancer: UNISWAP_V3_ROUTER.optimism,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   base: {
     chainId: 8453,
-    flashArbExecutor: BALANCER_VAULT,
-    gaslessRelayer: UNISWAP_V3_ROUTER.base,
-    positionRebalancer: UNISWAP_V3_ROUTER.base,
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
   avalanche: {
     chainId: 43114,
-    flashArbExecutor: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4', // TraderJoe
-    gaslessRelayer: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
-    positionRebalancer: '0x60aE616a2155Ee3d9A68541Ba4544862310933d4',
+    flashArbExecutor: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer // TraderJoe
+    gaslessRelayer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
+    positionRebalancer: '0x0000000000000000000000000000000000000000', // NOT DEPLOYED - set FLASH_ARB_EXECUTOR_<NETWORK> / authorised service relayer
   },
 } as const;
 
