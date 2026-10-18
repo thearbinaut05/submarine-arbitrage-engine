@@ -1,21 +1,20 @@
 # Gasless fix report - 2026-10-18
 
-Branch: fix/gasless-service-relayer
-Base: main@9f4d047
-Commits: d254ffd, f69f3fc, 1ca06fa (bot), 693b9c1, 93aaf50, e9f6ddd (bot scanner), this cleanup.
-CI: patch-gasless run 39084882125 success; patch-scanner run 39084958082 success.
+Branch: fix/gasless-service-relayer | PR: https://github.com/thearbinaut05/submarine-arbitrage-engine/pull/6
+Profit wallet (owner-set): 0x1713A06B6dE68139E63306bC604CaFD928fbb310
 
-## Verified on branch (read back via GitHub API)
-- mainnet-config.ts: PAYMASTERS = {}, usePaymasters: false, flashArbExecutor/gaslessRelayer = 0x000...0 (NOT DEPLOYED), no Balancer/Uniswap executor defaults, no 0xdCBE/0x8888 paymasters.
-- contract-addresses.ts: same zeroing, header warns never send executeFlashLoanGasless to Balancer/routers.
-- GaslessRelayer.sol + contracts/scripts/config.ts: paymaster arrays zeroed.
-- gasless-relay/index.ts: 410 fail-closed stub.
-- scan-opportunities/index.ts: autoExecuteOpportunity fail-closed (SCANNER_AUTO_EXECUTE_DISABLED), Gelato code commented out, braces/parens balanced. Scanner still returns opportunities; execution must go via execute-flash-loan.
-- contracts/test/FlashArbExecutor.fork.ts: authorised-relayer, recipient-mismatch, safe-revert checks (skipped unless RUN_FORK_TESTS=1).
+## Verified on branch
+- mainnet-config.ts / contract-addresses.ts: PAYMASTERS={}, usePaymasters:false, executor/relayer zeroed, no third-party paymasters.
+- GaslessRelayer.sol + config.ts: paymasters zeroed.
+- gasless-relay: 410 stub. scan-opportunities: Gelato auto-execute fail-closed.
+- execute-flash-loan: import { PROFIT_WALLET } from ../_shared/profit-wallet.ts; const profitRecipient = norm(PROFIT_WALLET); request profitRecipient ignored. Blob fb424c8.
+- profit-wallet.ts: PROFIT_WALLET=0x1713a06b6de68139e63306bc604cafd928fbb310 (checksummed 0x1713A06B...fbb310).
+- Fork test added (RUN_FORK_TESTS=1 only).
 
-## NOT verified in CI
-- Full vite build on PR (Pages workflow only runs on main). Run `npm install && npm run build` locally / in PR check before merge; edge functions are Deno, not built by vite.
-- Fork test not run (needs fork RPC + AAVE_POOL_ADDRESSES_PROVIDER, UNISWAP_V3_ROUTER, FORK_USDC).
+CI: 39084882125, 39084958082, 39089149588 all success.
 
-## Still required before mainnet (owner-only)
-Fork test pass, Sepolia deploy, service relayer funded (gas only), DEPLOYER_PRIVATE_KEY + FLASH_ARB_EXECUTOR_<NETWORK> in Supabase secrets only, setAuthorizedRelayer/setAllowedSwapTarget, Render service, first <$100 Arbitrum test. No audit performed. Supabase Auth UNHEALTHY at audit time.
+## Existing contracts - honest limits
+Aave/Balancer/Uniswap alone cannot atomically borrow-swap-swap-repay-pay you. FlashArbExecutor (yours, undeployed) is the receiver that does it via Aave callback. Submarine (Flashbots/commit-reveal) only hides the tx; profit still settles to PROFIT_WALLET in same tx.
+
+## Before mainnet
+Fork test, Sepolia, funded service relayer, Supabase secrets only, authorise relayer/routers, Render, <$100 Arbitrum test. No audit.
