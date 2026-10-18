@@ -574,7 +574,14 @@ async function scanNetwork(
 }
 
 // Auto-execute high-confidence opportunities
-async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promise<{
+async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promise<{ // SCANNER_AUTO_EXECUTE_DISABLED 2026-10-18: Gelato auto-execute removed; use execute-flash-loan service relayer
+  success: boolean;
+  taskId?: string;
+  error?: string;
+  preparedTx?: { to: string; data: string; chainId: number; gasLimit: number };
+}> {
+  return { success: false, error: 'Scanner auto-execute disabled. Use execute-flash-loan (authorised service relayer).' };
+/* LEGACY GELATO AUTO-EXECUTE DISABLED - kept for audit, never execute:
   success: boolean;
   taskId?: string;
   error?: string;
@@ -669,9 +676,9 @@ async function autoExecuteOpportunity(opportunity: ArbitrageOpportunity): Promis
   }
 }
 
+*/
 // Check if opportunity qualifies for auto-execution
-function shouldAutoExecute(opportunity: ArbitrageOpportunity): boolean {
-  if (!SCANNER_CONFIG.autoExecuteEnabled) return false;
+function shouldAutoExecute(_opportunity: ArbitrageOpportunity): boolean { return false; // SCANNER_AUTO_EXECUTE_DISABLED
   
   return (
     opportunity.profitPercent >= SCANNER_CONFIG.autoExecuteMinProfitPercent &&

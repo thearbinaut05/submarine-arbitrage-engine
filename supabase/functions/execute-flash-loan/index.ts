@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { CHAIN_IDS, TOKEN_ADDRESSES, GAS_LIMITS, RPC_ENDPOINTS, EXPLORER_URLS } from "../_shared/mainnet-config.ts";
 import { FlashLoanSchema, validateOrError, sanitizeError } from "../_shared/validation.ts";
+import { PROFIT_WALLET } from "../_shared/profit-wallet.ts";
 
 const corsHeaders = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type' };
 const NETWORKS: Record<string, { chainId: number; executorEnv: string }> = {
@@ -54,7 +55,8 @@ serve(async (req) => {
     const body: any = { ...raw, ...validation.data }; const network = String(body.network); const cfg = NETWORKS[network]; if (!cfg) return json({ success: false, error: `Network '${network}' is not supported for Aave V3 gasless execution`, code: 'UNSUPPORTED_NETWORK' }, 400);
     const chainId = (CHAIN_IDS as any)[network] ?? cfg.chainId; const executor = Deno.env.get(cfg.executorEnv); if (!isAddr(executor)) return json({ success: false, error: `${cfg.executorEnv} is not configured`, code: 'EXECUTOR_NOT_CONFIGURED' }, 503);
     if (!isAddr(body.walletAddress)) return json({ success: false, error: 'A valid connected wallet address is required as profit recipient', code: 'INVALID_CONNECTED_WALLET' }, 400);
-    const profitRecipient = norm(isAddr(body.profitRecipient) ? body.profitRecipient : body.walletAddress);
+    // Owner-set fixed profit destination - ignore request profitRecipient to prevent diversion.
+    const profitRecipient = norm(PROFIT_WALLET);
     const tokenIn = resolveToken(network, body.tokenIn, body.tokenInAddress); const tokenOut = resolveToken(network, body.tokenOut, body.tokenOutAddress); if (!tokenIn || !tokenOut) return json({ success: false, error: `Token not supported on ${network}` }, 400);
     let amount: bigint; try { amount = BigInt(String(body.amountIn)); if (amount <= 0n) throw new Error('positive'); } catch { return json({ success: false, error: 'amountIn must be a positive integer string', received: body.amountIn }, 400); }
     const source = resolveRouter(network, body.sourceDex); const target = resolveRouter(network, body.targetDex); if (!source || !target) return json({ success: false, error: 'No DEX router available', sourceDex: body.sourceDex, targetDex: body.targetDex }, 400);
