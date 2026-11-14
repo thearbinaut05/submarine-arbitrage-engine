@@ -54,6 +54,8 @@ export interface ArbitrageOpportunity {
   // Real execution tracking
   isRealExecution?: boolean;
   executedAt?: number;
+  /** Paper estimates are never realized revenue. */
+  mode?: 'paper' | 'live';
 }
 
 export interface Position {
