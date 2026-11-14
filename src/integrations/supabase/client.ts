@@ -4,6 +4,7 @@
 // showing a blank page.
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+import { brokeredPreviewStorage } from './previewAuthStorage';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as
@@ -31,7 +32,7 @@ export const supabase = createClient<Database>(
   isSupabaseConfigured ? SUPABASE_PUBLISHABLE_KEY! : 'placeholder-publishable-key',
   {
     auth: {
-      storage: localStorage,
+      storage: brokeredPreviewStorage(),
       persistSession: true,
       autoRefreshToken: true,
     },
