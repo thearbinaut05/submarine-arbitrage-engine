@@ -438,6 +438,9 @@ export function useRealArbitrage(
   }, []);
 
   const executeOpportunity = useCallback(async (opportunity: ArbitrageOpportunity) => {
+    // Recovery lock: scanning remains available, but live transaction submission is blocked
+    // until executor deployment, relayer authorization, and receipt reconciliation are verified.
+    throw new Error('Live arbitrage execution is disabled during recovery. Use read-only scanning only.');
     if (!walletAddress) {
       throw new Error('Wallet not connected');
     }
